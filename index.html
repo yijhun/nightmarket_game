@@ -370,17 +370,17 @@ function askConfirm(msg, okText) {
     document.body.appendChild(wrap);
   });
 }
-// 照片壓縮：最長邊 1024px、JPEG
+// 照片壓縮：最長邊 900px、JPEG
 function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const s = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const s = Math.min(1, 900 / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      resolve(c.toDataURL('image/jpeg', 0.72));
+      resolve(c.toDataURL('image/jpeg', 0.62));
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('讀不到這張照片')); };
     img.src = url;
@@ -573,17 +573,25 @@ if (MODE === 'player') {
         if (d) { draws[pid] = d; await be.set(`${R}/draws/${pid}`, d); }
       } finally { drawing = false; }
     };
+    let submitting = false;
     window.submitAns = async function () {
       const inp = document.getElementById('ans');
       const text = (inp.value || '').trim().slice(0, 60);
       const d = draws[pid];
-      if (!d) return;
+      if (!d || submitting) return;
       if (!text) { inp.focus(); toast('先把他的回答打進來'); return; }
-      await be.set(`${R}/answers/${rid()}`, {from: pid, to: d.target, q: d.q, kind: d.kind, a: text, t: Date.now()});
-      inp.value = '';
-      toast('✓ 記下了！對方會收到通知，但不知道是你');
+      submitting = true;
+      const aid = rid(), rec = {from: pid, to: d.target, q: d.q, kind: d.kind, a: text, t: Date.now()};
+      answers[aid] = rec;                       // 先在畫面上更新，不用等伺服器
       const nd = makeDraw(d.target);
-      if (nd) { draws[pid] = nd; await be.set(`${R}/draws/${pid}`, nd); }
+      if (nd) draws[pid] = nd;
+      inp.value = '';
+      updatePlay();
+      toast('✓ 記下了！對方會收到通知，但不知道是你');
+      try {
+        await Promise.all([be.set(`${R}/answers/${aid}`, rec), nd ? be.set(`${R}/draws/${pid}`, nd) : null]);
+      } catch (e) { toast('網路不穩，請再按一次'); delete answers[aid]; inp.value = text; updatePlay(); }
+      finally { submitting = false; }
     };
     window.guess = async function (aid) {
       const sel = document.getElementById('g_' + aid);
@@ -710,6 +718,20 @@ if (MODE === 'player') {
         if (!photosListening) { photosListening = true; be.listen(`${R}/recPhoto`, v => { allPhotos = v || {}; updateReveal(); }); }
       }
     }
+    function inboxItemHTML(id, a) {
+      const opts = members().filter(m => m.pid !== pid).map(m => `<option value="${m.pid}">${esc(m.name)}</option>`).join('');
+      const vd = a.verdict === 'ok' ? '<span class="tag-ok">你說對</span>' : a.verdict === 'no' ? '<span class="tag-wait">你說不對</span>' : '';
+      const guessPart = a.guess
+        ? (a.solved ? `<div class="solved">✓ 你猜 ${esc(nameOf(a.guess))}，猜中了！+1</div>` : `<div class="wrong" style="font-size:14px">✗ 你猜 ${esc(nameOf(a.guess))}，沒猜中（揭曉時公布是誰）</div>`)
+        : `<div class="guess-row"><select id="g_${id}"><option value="">猜是誰套你的話（只能猜一次）</option>${opts}</select><button class="btn btn-primary btn-sm" onclick="guess('${id}')">猜</button></div>`;
+      return `<div class="inbox-q">有人記下了你的「${esc(a.q)}」</div>
+        <div class="inbox-a">${esc(a.a)} ${vd}</div>
+        <div class="row-btns" style="margin:0 0 10px">
+          <button class="btn btn-sm ${a.verdict === 'ok' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','ok')">✓ 答案對</button>
+          <button class="btn btn-sm ${a.verdict === 'no' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','no')">✗ 不對</button>
+        </div>
+        ${guessPart}`;
+    }
     let inboxSig = '';
     function updatePlay() {
       const sc = scores(members(), answers)[pid] || {got: 0, guessed: 0};
@@ -727,22 +749,28 @@ if (MODE === 'player') {
         inboxSig = sig;
         const open = mineIn.filter(([, a]) => !a.guess).length;
         document.getElementById('inbox-count').textContent = mineIn.length ? `${open} 個待猜` : '';
-        document.getElementById('inbox').innerHTML = mineIn.length ? mineIn.map(([id, a]) => {
-          const opts = members().filter(m => m.pid !== pid).map(m => `<option value="${m.pid}">${esc(m.name)}</option>`).join('');
-          const vd = a.verdict === 'ok' ? '<span class="tag-ok">你說對</span>' : a.verdict === 'no' ? '<span class="tag-wait">你說不對</span>' : '';
-          const guessPart = a.guess
-            ? (a.solved ? `<div class="solved">✓ 你猜 ${esc(nameOf(a.guess))}，猜中了！+1</div>` : `<div class="wrong" style="font-size:14px">✗ 你猜 ${esc(nameOf(a.guess))}，沒猜中（揭曉時公布是誰）</div>`)
-            : `<div class="guess-row"><select id="g_${id}"><option value="">猜是誰套你的話（只能猜一次）</option>${opts}</select><button class="btn btn-primary btn-sm" onclick="guess('${id}')">猜</button></div>`;
-          return `<div class="inbox-item ${a.guess ? '' : 'new'}">
-            <div class="inbox-q">有人記下了你的「${esc(a.q)}」</div>
-            <div class="inbox-a">${esc(a.a)} ${vd}</div>
-            <div class="row-btns" style="margin:0 0 10px">
-              <button class="btn btn-sm ${a.verdict === 'ok' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','ok')">✓ 答案對</button>
-              <button class="btn btn-sm ${a.verdict === 'no' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','no')">✗ 不對</button>
-            </div>
-            ${guessPart}
-          </div>`;
-        }).join('') : '<div class="soft" style="color:#a0958b">還沒有人套到你的話。小心有人在套你！</div>';
+        // 只更新有變動的那一則，避免正在點的按鈕被重畫掉
+        const box = document.getElementById('inbox');
+        if (!mineIn.length) { box.innerHTML = '<div class="soft" style="color:#a0958b">還沒有人套到你的話。小心有人在套你！</div>'; }
+        else {
+          const empty = box.querySelector(':scope > .soft'); if (empty) empty.remove();
+          const want = new Set(mineIn.map(([id]) => 'ib_' + id));
+          [...box.children].forEach(c => { if (!want.has(c.id)) c.remove(); });
+          const n = members().length;
+          mineIn.forEach(([id, a], idx) => {
+            let el = document.getElementById('ib_' + id);
+            if (!el) { el = document.createElement('div'); el.id = 'ib_' + id; }
+            const key = JSON.stringify([a.solved, a.guess, a.verdict, n]);
+            if (el.dataset.k !== key) {
+              const prev = el.querySelector('select'), keepVal = prev ? prev.value : '';
+              el.className = 'inbox-item ' + (a.guess ? '' : 'new');
+              el.innerHTML = inboxItemHTML(id, a);
+              el.dataset.k = key;
+              const s = el.querySelector('select'); if (s && keepVal) s.value = keepVal;
+            }
+            if (box.children[idx] !== el) box.insertBefore(el, box.children[idx] || null);
+          });
+        }
       }
       // 我記下的答案
       const mine = Object.values(answers).filter(a => a.from === pid).sort((x, y) => y.t - x.t);

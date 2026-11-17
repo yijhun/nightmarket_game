@@ -88,6 +88,8 @@ table.ov th { color: #a0958b; font-weight: 600; font-size: 11px; }
 .s1 .stage-no { background: #C8442C; } .s1 { border-color: #F2B8AA; }
 .s2 .stage-no { background: #D98B1E; } .s2 { border-color: #F2D29A; }
 .s3 .stage-no { background: #2F7D5B; } .s3 { border-color: #A8D9BC; }
+.s4 .stage-no { background: #6B5BA8; } .s4 { border-color: #CFC6EC; }
+.s4 summary::-webkit-details-marker { display: none; }
 .rule { font-size: 13px; color: #6b615a; background: #faf7f3; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.7; }
 .sub-title { font-size: 12px; font-weight: 700; color: #8a7f76; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
 .sub-title::after { content: ''; flex: 1; height: 1px; background: #f1ebe4; }
@@ -236,7 +238,7 @@ details.past .stage { border: none; margin: 0; }
           <div class="hint">平常請到 GitHub 改 <b>bank.txt</b>（按開始遊戲時會自動讀最新版）。這裡只適合活動當下臨時改：改完按「儲存題庫」，之後就會一直用這個版本，直到你按「改回用 GitHub 的 bank.txt」。</div>
           <div class="sub-title">🍜 口味題　格式：想知道的事 | 不能直接問的問法</div>
           <textarea id="bank-food" class="bank-ta" oninput="bankDirty()"></textarea>
-          <div class="sub-title">💬 生活題　格式：想知道的事 | 不能直接問的問法</div>
+          <div class="sub-title">💬 生活題＋信仰題　格式：想知道的事 | 不能直接問的問法（信仰題前面有 [信仰]）</div>
           <textarea id="bank-life" class="bank-ta" oninput="bankDirty()"></textarea>
           <div class="warning" id="bank-err"></div>
           <div class="actions">
@@ -256,6 +258,7 @@ details.past .stage { border: none; margin: 0; }
         <div class="hint">按「揭曉結果」，所有人的手機會一起顯示推薦照片、誰套了誰的話和得分。</div>
         <div class="sub-title">📊 即時狀況</div>
         <div id="dash"></div>
+        <div id="custom-list"></div>
         <button class="toggle-btn" id="ov-btn" onclick="toggleOverview()">👁️ 展開推薦對象表（不要給別人看）</button>
         <div class="text-area" id="ov-area"></div>
         <button class="btn btn-secondary btn-full" style="margin-top:14px" onclick="resetGame()">🔄 重新開始（清除所有答案和照片）</button>
@@ -339,6 +342,7 @@ function parseBankTxt(txt) {
     if (!q) return;
     if (/^口味|^food/i.test(cat)) food.push({q, ban});
     else if (/^生活|^life/i.test(cat)) life.push({q, ban});
+    else if (/^信仰|^faith/i.test(cat)) life.push({q, ban, k: '信仰'});   // 信仰題和生活題一起抽，標籤顯示「信仰」
   });
   return {food, life};
 }
@@ -492,7 +496,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
 
 const urlParams = new URLSearchParams(location.search);
 // ── 自動更新：GitHub Pages 會讓手機快取舊網頁 10 分鐘，發現有新版就自動重新載入 ──
-const BUILD = '2ad7e12fa29a';
+const BUILD = '5bb4527167e4';
 async function checkUpdate() {
   if (location.protocol === 'file:') return;
   try {
@@ -527,7 +531,7 @@ if (MODE === 'player') {
     const asPid = (urlParams.get('as') || '').replace(/[^A-Za-z0-9_-]/g, ''); // 代玩連結：直接用某人的身分
     const PID_KEY = asPid ? `nm_pid_${room}_as_${asPid}` : `nm_pid_${room}${urlParams.get('dev') || ''}`; // dev 參數只用於同一台電腦模擬多支手機
     let pid = asPid || lsGet(PID_KEY, null);
-    let players = {}, config = null, stage = 0, draws = {}, answers = {}, recMeta = {}, myPhoto = null, allPhotos = {};
+    let players = {}, config = null, stage = 0, draws = {}, answers = {}, recMeta = {}, myPhoto = null, allPhotos = {}, custom = {};
     let layout = '', pendingPhoto = null, photosListening = false, loaded = {};
     const seenKey = `nm_seen_${room}_${pid}`;
     let seen = lsGet(seenKey, null);
@@ -590,14 +594,19 @@ if (MODE === 'player') {
       if (!pool.length) pool = others;
       const min = Math.min(...pool.map(m => count[m.pid]));
       const target = pick(pool.filter(m => count[m.pid] === min)).pid;
-      const all = [...bank().food.map(x => ({...x, kind: '口味'})), ...bank().life.map(x => ({...x, kind: '生活'}))];
-      const used = new Set();
-      Object.values(answers).forEach(a => { if (a.to === target) used.add(a.q); });
-      Object.entries(draws).forEach(([p, d]) => { if (d && d.target === target) used.add(d.q); });
+      // 大家出的題：不會拿來問出題的人自己
+      const mine = Object.entries(custom).filter(([, x]) => x && x.q && x.by !== target)
+        .map(([id, x]) => ({q: x.q, ban: x.ban || '', kind: '大家出的', cid: id, ct: x.t || 0}));
+      const all = [...bank().food.map(x => ({...x, kind: '口味'})), ...bank().life.map(x => ({...x, kind: x.k || '生活'})), ...mine];
+      const used = new Set(), usedAny = new Set();
+      Object.values(answers).forEach(a => { usedAny.add(a.q); if (a.to === target) used.add(a.q); });
+      Object.entries(draws).forEach(([p, d]) => { if (!d) return; usedAny.add(d.q); if (d.target === target) used.add(d.q); });
       let avail = all.filter(x => !used.has(x.q));
       if (!avail.length) avail = all;
-      const q = pick(avail);
-      return {target, q: q.q, ban: q.ban || '', kind: q.kind, g: (config && config.t) || 0, t: Date.now()};
+      // 新出的題還沒有人抽過 → 優先，先出的先抽
+      const fresh = avail.filter(x => x.cid && !usedAny.has(x.q)).sort((a, b) => a.ct - b.ct);
+      const q = fresh.length ? fresh[0] : pick(avail);
+      return {target, q: q.q, ban: q.ban || '', kind: q.kind, cid: q.cid || '', g: (config && config.t) || 0, t: Date.now()};
     }
     let drawing = false;
     window.reroll = async function () {
@@ -608,6 +617,31 @@ if (MODE === 'player') {
         const d = makeDraw(cur && cur.target);
         if (d) { draws[pid] = d; await be.set(`${R}/draws/${pid}`, d); }
       } finally { drawing = false; }
+    };
+    function updateCustom() {
+      const c = document.getElementById('cq-count'); if (!c) return;
+      const all = Object.values(custom).filter(x => x && x.q);
+      c.textContent = all.length ? `大家出了 ${all.length} 題` : '';
+      const mineQ = all.filter(x => x.by === pid);
+      document.getElementById('cq-mine').innerHTML = mineQ.length
+        ? `<div class="hint-list">你出的：<br>${mineQ.map(x => '・' + esc(x.q)).join('<br>')}</div>` : '';
+    }
+    let addingCustom = false;
+    window.addCustom = async function () {
+      const qi = document.getElementById('cq-q'), bi = document.getElementById('cq-ban');
+      const q = (qi.value || '').trim().slice(0, 40), ban = (bi.value || '').trim().slice(0, 30);
+      if (!q) { qi.focus(); toast('先寫你想知道什麼'); return; }
+      const norm = t => t.replace(/[\s，。？?！!、]/g, '');
+      const dupe = [...bank().food, ...bank().life, ...Object.values(custom)].some(x => x && x.q && norm(x.q) === norm(q));
+      if (dupe) { toast('題庫裡已經有這題了'); return; }
+      if (addingCustom) return;
+      addingCustom = true;
+      const id = rid(), rec = {q, ban, by: pid, t: Date.now()};
+      custom[id] = rec; qi.value = ''; bi.value = ''; updateCustom();
+      toast('✓ 已新增！下一個換題的人會優先抽到');
+      try { await be.set(`${R}/custom/${id}`, rec); }
+      catch (e) { delete custom[id]; qi.value = q; bi.value = ban; updateCustom(); toast('網路不穩，請再按一次'); }
+      finally { addingCustom = false; }
     };
     let submitting = false;
     window.submitAns = async function () {
@@ -693,7 +727,7 @@ if (MODE === 'player') {
       const jl = document.getElementById('joined'); if (jl) jl.innerHTML = joinedList();
       if (layout === 'play') {
         const d = draws[pid];
-        const stale = d && (!members().some(m => m.pid === d.target && m.pid !== pid) || (d.g || 0) !== ((config && config.t) || 0));
+        const stale = d && (!members().some(m => m.pid === d.target && m.pid !== pid) || (d.g || 0) !== ((config && config.t) || 0) || (d.cid && loaded.q && !custom[d.cid]));
         if (loaded.d && loaded.a && (!d || stale) && !drawing) reroll();
         updatePlay();
       }
@@ -741,6 +775,14 @@ if (MODE === 'player') {
               <div class="row-btns"><button class="btn btn-secondary" onclick="reroll()">🔀 換一題</button><button class="btn btn-primary" onclick="submitAns()">記下答案</button></div>
               <div class="soft" style="color:#8a7f76">記下後會自動換下一題。對方會收到通知，但不知道是你。</div>
             </div></div>
+          <details class="stage s4" id="cq-box"><summary class="stage-head" style="cursor:pointer;list-style:none"><span class="stage-no">出題</span><span class="stage-title">✍️ 想問大家什麼？自己出一題</span><span class="stage-time" id="cq-count"></span></summary>
+            <div class="stage-body">
+              <input class="field" id="cq-q" placeholder="想知道大家的什麼？例：最喜歡哪種夜市飲料" maxlength="40" autocomplete="off">
+              <input class="field" id="cq-ban" placeholder="（可不填）不能直接問的問法" maxlength="30" autocomplete="off">
+              <button class="btn btn-primary btn-full" style="margin-top:8px" onclick="addCustom()">新增題目</button>
+              <div class="soft" style="color:#8a7f76">新題目會優先被下一個換題的人抽到。不會顯示是誰出的，也不會拿來問你自己。</div>
+              <div id="cq-mine"></div>
+            </div></details>
           <div class="stage s3"><div class="stage-head"><span class="stage-no">通知</span><span class="stage-title">📬 有人在套你的話</span><span class="stage-time" id="inbox-count"></span></div>
             <div class="stage-body" id="inbox"></div></div>
           <div class="stage s2"><div class="stage-head"><span class="stage-no">推薦</span><span class="stage-title">🏮 秘密推薦官</span></div>
@@ -757,6 +799,7 @@ if (MODE === 'player') {
           <div class="phone-footer">梅竹團契・後站夜市</div></div>`;
         document.getElementById('ans').addEventListener('keypress', e => { if (e.key === 'Enter') submitAns(); });
         updateRec(true);
+        updateCustom();
         listenMyPhoto();
         return;
       }
@@ -856,6 +899,7 @@ if (MODE === 'player') {
     be.listen(`${R}/draws`, v => { draws = v || {}; ready('d'); refresh(); });
     be.listen(`${R}/answers`, v => { answers = v || {}; ready('a'); notify(); refresh(); });
     be.listen(`${R}/recMeta`, v => { recMeta = v || {}; refresh(); });
+    be.listen(`${R}/custom`, v => { custom = v || {}; ready('q'); refresh(); updateCustom(); });
   });
 }
 
@@ -863,7 +907,7 @@ if (MODE === 'player') {
 //  主持人
 // ════════════════════════════════════════════════════════════════════
 if (MODE === 'host') {
-  let be = null, room = '', players = {}, config = null, stage = 0, answers = {}, recMeta = {}, draws = {};
+  let be = null, room = '', players = {}, config = null, stage = 0, answers = {}, recMeta = {}, draws = {}, custom = {};
   let bankRemote = null, bankFile = null, bankEditing = false, revealPhotos = null;
   const BANK_PATH = 'rooms/_bank';
   const R = () => `rooms/${room}`;
@@ -906,6 +950,7 @@ if (MODE === 'host') {
     be.listen(`${R()}/answers`, v => { answers = v || {}; renderAll(); });
     be.listen(`${R()}/recMeta`, v => { recMeta = v || {}; renderAll(); });
     be.listen(`${R()}/draws`, v => { draws = v || {}; });
+    be.listen(`${R()}/custom`, v => { custom = v || {}; renderAll(); });
   };
   window.leaveRoom = function () { lsSet('nm_host_room', ''); location.reload(); };
   window.copyJoin = function () { copyText(`${baseURL()}?room=${room}`, document.getElementById('copy-join'), '🔗 複製加入連結（貼到 LINE 群組）'); };
@@ -1014,6 +1059,13 @@ if (MODE === 'host') {
     document.getElementById('dash').innerHTML = `<table class="ov dash"><tr><th>名字</th><th class="c">套到</th><th class="c">被套</th><th class="c">猜中</th><th class="c">推薦</th></tr>
       ${members().map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].asked}</td><td class="c">${sc[m.pid].guessed}</td><td class="c">${recMeta[m.pid] ? (recMeta[m.pid].photo ? '📷' : '✓') : '—'}</td></tr>`).join('')}</table>
       <div class="hint">共套到 ${Object.keys(answers).length} 題・推薦完成 ${members().filter(m => recMeta[m.pid]).length}／${members().length} 人</div>`;
+    const cl = Object.entries(custom).filter(([, x]) => x && x.q).sort((a, b) => a[1].t - b[1].t);
+    document.getElementById('custom-list').innerHTML = cl.length
+      ? `<div class="sub-title">✍️ 大家出的題（${cl.length}）</div>` + cl.map(([id, x]) => {
+          const n = Object.values(answers).filter(a => a.q === x.q).length;
+          return `<div class="member-item" style="grid-template-columns:1fr 28px"><div class="member-name" style="font-weight:400">${esc(x.q)}${x.ban ? `<span style="color:#8a7f76;font-size:12px">（不能問：${esc(x.ban)}）</span>` : ''}<span style="color:#8a7f76;font-size:12px">・${esc(nameOf(x.by))} 出・套到 ${n} 次</span></div><button class="btn-icon" onclick="removeCustom('${id}')">×</button></div>`;
+        }).join('')
+      : '<div class="hint">玩家可以在手機上自己出題，會顯示在這裡，不合適的可以刪掉。</div>';
     document.getElementById('ov-area').innerHTML = `<table class="ov"><tr><th>推薦官</th><th>推薦對象</th></tr>
       ${members().map(m => `<tr><td>${esc(m.name)}</td><td>${esc(nameOf(config.rec[m.pid]))}</td></tr>`).join('')}</table>`;
     if (stage >= 2) {
@@ -1038,6 +1090,11 @@ if (MODE === 'host') {
     wrap.addEventListener('click', e => { if (e.target === wrap || e.target.hasAttribute('data-x')) wrap.remove(); });
     document.body.appendChild(wrap);
   };
+  window.removeCustom = async function (id) {
+    const x = custom[id]; if (!x) return;
+    if (!(await askConfirm(`刪掉「${x.q}」這題嗎？已經套到的答案會保留，正在抽到這題的人會自動換題。`, '刪掉'))) return;
+    await be.remove(`${R()}/custom/${id}`);
+  };
   window.toggleOverview = function () {
     const a = document.getElementById('ov-area'), b = document.getElementById('ov-btn');
     const open = a.classList.toggle('open'); b.classList.toggle('open', open);
@@ -1047,14 +1104,15 @@ if (MODE === 'host') {
   // ── 題庫編輯 ──
   function currentBank() { return validBank(bankRemote) ? {food: bankRemote.food, life: bankRemote.life} : (bankFile || DEFAULT_BANK); }
   const bankSource = () => validBank(bankRemote) ? '網站上改過的版本' : bankFile ? 'GitHub bank.txt' : '程式內建（讀不到 bank.txt）';
-  const qToLines = arr => arr.map(x => x.ban ? `${x.q} | ${x.ban}` : x.q).join('\n');
+  const qToLines = arr => arr.map(x => (x.k ? `[${x.k}] ` : '') + (x.ban ? `${x.q} | ${x.ban}` : x.q)).join('\n');
   function fillBank(b) {
     document.getElementById('bank-food').value = qToLines(b.food);
     document.getElementById('bank-life').value = qToLines(b.life);
   }
   function bankChip() {
     const b = currentBank();
-    document.getElementById('bank-chip').textContent = `口味 ${b.food.length}・生活 ${b.life.length}`;
+    const nf = b.life.filter(x => x.k === '信仰').length;
+    document.getElementById('bank-chip').textContent = `口味 ${b.food.length}・生活 ${b.life.length - nf}${nf ? `・信仰 ${nf}` : ''}`;
     const src = document.getElementById('bank-src');
     if (src) src.innerHTML = `目前使用：<b>${esc(bankSource())}</b>${validBank(bankRemote) ? '　<a href="javascript:void(0)" onclick="bankUseFile()">改回用 GitHub 的 bank.txt</a>' : ''}`;
   }
@@ -1064,8 +1122,11 @@ if (MODE === 'host') {
       const line = raw.trim();
       if (!line) return;
       const parts = line.split(/[|｜]/);
-      const a = (parts[0] || '').trim(), b = parts.slice(1).join('|').trim();
-      if (a) out.push({q: a, ban: b});
+      let a = (parts[0] || '').trim(); const b = parts.slice(1).join('|').trim();
+      const m = a.match(/^\[(.+?)\]\s*/);
+      const k = m ? m[1] : '';
+      if (m) a = a.slice(m[0].length).trim();
+      if (a) out.push(k ? {q: a, ban: b, k} : {q: a, ban: b});
     });
     return out;
   }

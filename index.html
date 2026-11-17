@@ -589,6 +589,25 @@ async function makeBackend() {
   };
 }
 
+
+// ── 頁面內確認框（取代系統彈窗，有些 App 內建瀏覽器會擋掉系統彈窗）──
+function askConfirm(msg, okText) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+    wrap.innerHTML = `<div style="background:white;border-radius:14px;padding:20px;max-width:340px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.2)">
+      <div class="ask-msg" style="font-size:15px;line-height:1.7;margin-bottom:16px;color:#1f1a17"></div>
+      <div style="display:flex;gap:8px"><button class="btn btn-secondary" style="flex:1" data-v="0">取消</button><button class="btn btn-primary" style="flex:1" data-v="1"></button></div></div>`;
+    wrap.querySelector('.ask-msg').textContent = msg;
+    wrap.querySelector('[data-v="1"]').textContent = okText || '確定';
+    wrap.addEventListener('click', e => {
+      const v = e.target.getAttribute('data-v');
+      if (v === null && e.target !== wrap) return;
+      wrap.remove(); resolve(v === '1');
+    });
+    document.body.appendChild(wrap);
+  });
+}
 const STAGE_LABELS = ['等待加入', '第一關・第一輪', '第一關・第二輪', '第二關', '第三關'];
 const NEXT_LABELS = ['', '換第二輪 →', '開始第二關 →', '開始第三關 →', '活動結束'];
 const cleanRoom = s => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
@@ -656,13 +675,13 @@ if (MODE === 'player') {
       const name = (inp.value || '').trim().slice(0, 10);
       if (!name) { inp.focus(); return; }
       const dup = Object.values(players).some(p => p.name === name);
-      if (dup && !confirm(`已經有人叫「${name}」了，確定是你嗎？（如果是同名的人，請加個字區分）`)) return;
+      if (dup && !(await askConfirm(`已經有人叫「${name}」了，確定是你嗎？（如果是同名的人，請加個字區分）`, '是我'))) return;
       pid = rid();
       lsSet(PID_KEY, pid);
       await be.set(`rooms/${room}/players/${pid}`, {name, t: Date.now()});
     };
     window.leaveRoom = async function () {
-      if (!confirm('要重新輸入名字嗎？')) return;
+      if (!(await askConfirm('要重新輸入名字嗎？', '重新輸入'))) return;
       const old = pid; pid = null; lsSet(PID_KEY, null);
       if (old) await be.remove(`rooms/${room}/players/${old}`);
       render();
@@ -796,9 +815,9 @@ if (MODE === 'host') {
     autoAssignGroups(ms, nGroups).forEach(m => { groups[m.pid] = {g1: m.g1, g2: m.g2}; });
     lsSet(`nm_groups_${room}`, groups); renderAll();
   };
-  window.removePlayer = function (pid) {
+  window.removePlayer = async function (pid) {
     const p = players[pid];
-    if (!confirm(`要把「${p ? p.name : ''}」移出名單嗎？`)) return;
+    if (!(await askConfirm(`要把「${p ? p.name : ''}」移出名單嗎？`, '移出'))) return;
     be.remove(`rooms/${room}/players/${pid}`);
   };
   window.addManual = function () {
@@ -820,15 +839,15 @@ if (MODE === 'host') {
     const ms = currentMembers();
     const issues = checkSetup(ms);
     if (issues.length) { const w = document.getElementById('warn-msg'); w.innerHTML = '⚠️ ' + issues.join('<br>⚠️ '); w.style.display = 'block'; return; }
-    if (config && stage >= 1 && !confirm('重新分配會改變每個人的任務，並回到第一關第一輪。確定嗎？')) return;
+    if (config && stage >= 1 && !(await askConfirm('重新分配會改變每個人的任務，並回到第一關第一輪。確定嗎？', '重新分配'))) return;
     const seed = `${room}-${Date.now()}`;
     await be.set(`rooms/${room}/config`, {members: ms, seed});
     await be.set(`rooms/${room}/stage`, 1);
   };
-  window.moveStage = function (d) {
+  window.moveStage = async function (d) {
     const next = Math.max(config ? 1 : 0, Math.min(STAGES.length, stage + d));
     if (next === stage) return;
-    if (d > 0 && !confirm(`要讓所有人進入「${STAGE_LABELS[next]}」嗎？`)) return;
+    if (d > 0 && !(await askConfirm(`要讓所有人進入「${STAGE_LABELS[next]}」嗎？`, '開始'))) return;
     be.set(`rooms/${room}/stage`, next);
   };
 

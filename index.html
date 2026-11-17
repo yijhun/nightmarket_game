@@ -140,6 +140,8 @@ details.past { background: white; border: 1px solid #ebe3da; border-radius: 12px
 details.past summary { padding: 11px 14px; font-size: 13px; color: #8a7f76; cursor: pointer; }
 details.past .stage { border: none; margin: 0; }
 .now-banner { text-align: center; font-size: 12px; color: #C8442C; font-weight: 700; margin: 4px 0 8px; }
+.bank-ta { width: 100%; min-height: 220px; border: 1.5px solid #ebe3da; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.8; font-family: inherit; resize: vertical; }
+.bank-ta:focus { outline: none; border-color: #C8442C; }
 .link-btn { background: none; border: none; color: #a0958b; font-size: 12px; text-decoration: underline; cursor: pointer; margin-top: 14px; font-family: inherit; }
 </style>
 </head>
@@ -196,6 +198,25 @@ details.past .stage { border: none; margin: 0; }
         <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="generate()" id="gen-btn">✨ 分配任務並開始第一關</button>
       </div>
 
+      <div class="card" id="bank-card">
+        <div class="card-title">📚 題庫 <span id="bank-chip" class="chip" style="background:#f1ebe4;color:#4a403a;"></span></div>
+        <button class="toggle-btn" id="bank-btn" onclick="toggleBank()" style="margin-top:0">👁️ 檢視／修改題庫</button>
+        <div class="text-area" id="bank-area">
+          <div class="hint" style="margin-top:0">每行一題，用「|」把兩個部分隔開。改完按「儲存題庫」，之後按「分配任務」才會用新題庫。題庫存在雲端，所有活動共用。</div>
+          <div class="sub-title">🍜 秘密題・口味（每輪抽 1 題）　格式：想知道的事 | 不能直接問的問法</div>
+          <textarea id="bank-food" class="bank-ta" oninput="bankDirty()"></textarea>
+          <div class="sub-title">💬 秘密題・生活（每輪抽 1 題）　格式：想知道的事 | 不能直接問的問法</div>
+          <textarea id="bank-life" class="bank-ta" oninput="bankDirty()"></textarea>
+          <div class="sub-title">📖 經文（結尾每人一節）　格式：經文內容 | 出處</div>
+          <textarea id="bank-verses" class="bank-ta" oninput="bankDirty()"></textarea>
+          <div class="warning" id="bank-err"></div>
+          <div class="actions">
+            <button class="btn btn-secondary" onclick="bankDefaults()">恢復預設</button>
+            <button class="btn btn-primary" id="bank-save" onclick="bankSave()">儲存題庫</button>
+          </div>
+        </div>
+      </div>
+
       <div class="card" id="control-card" style="display:none">
         <div class="card-title">④ 活動進行中</div>
         <div class="steps" id="steps"></div>
@@ -237,25 +258,6 @@ const FIREBASE_CONFIG = {
 };
 
 // CORE-START ════════════════════════════════════════════════════════════
-// ── 題庫：公開聊天題（可以直接問）──────────────────────────────────────
-const OPEN_Q = [
-  '這攤你吃過嗎？推薦嗎？',
-  '你逛夜市一定會買的是什麼？',
-  '小時候最常去哪個夜市？',
-  '夜市遊戲你最擅長哪一種？',
-  '如果只能吃一種夜市小吃一輩子，你選什麼？',
-  '你是會排隊名店的人，還是隨便挑一攤的人？',
-  '你吃過最奇怪的夜市食物是什麼？',
-  '逛夜市你是先吃鹹的還是先吃甜的？',
-  '最近一件讓你開心的小事？',
-  '這禮拜最累的是什麼事？',
-  '你放鬆的方式是什麼？',
-  '最近有什麼想嘗試、但還沒做的事？',
-  '如果明天突然放假一天，你會做什麼？',
-  '最近有沒有一首歌一直在聽？',
-  '你覺得自己是夜貓子還是早起的人？',
-  '來新竹之後最喜歡的一個地方？',
-];
 // ── 題庫：秘密題・口味（第二關推薦時會用到）────────────────────────────
 const FOOD_Q = [
   {q:'吃不吃辣、能吃多辣', ban:'你吃辣嗎？'},
@@ -424,7 +426,12 @@ function pickQ(bank, used, n) {
 }
 
 // ── 主計算（主控端與手機端共用，同一個 seed 結果完全相同）───────────────
-function buildAll(members, seed) {
+const DEFAULT_BANK = {food: FOOD_Q, life: LIFE_Q, verses: VERSES};
+function validBank(b) {
+  return !!(b && Array.isArray(b.food) && b.food.length && Array.isArray(b.life) && b.life.length && Array.isArray(b.verses) && b.verses.length);
+}
+function buildAll(members, seed, bank) {
+  const B = validBank(bank) ? bank : DEFAULT_BANK;
   setSeed(seed);
   const R = {rounds: [{}, {}], recommend: {}, verse: {}, passwords: []};
   const usedFood = {}, usedLife = {};
@@ -446,17 +453,16 @@ function buildAll(members, seed) {
         mates: groups[m[key]],
         target: tid,
         secret: tid ? [
-          {...pickQ(FOOD_Q, usedFood[tid], 1)[0], kind: '口味'},
-          {...pickQ(LIFE_Q, usedLife[tid], 1)[0], kind: '生活'},
+          {...pickQ(B.food, usedFood[tid], 1)[0], kind: '口味'},
+          {...pickQ(B.life, usedLife[tid], 1)[0], kind: '生活'},
         ] : [],
-        open: shuffle(OPEN_Q).slice(0, 3),
       };
     });
     prev = targetMap;
   });
 
   R.recommend = assignRecommend(members) || {};
-  const vs = shuffle(VERSES);
+  const vs = shuffle(B.verses);
   members.forEach((m, i) => { R.verse[m.id] = vs[i % vs.length]; });
   R.passwords = shuffle(PASSWORDS).slice(0, 3);
   return R;
@@ -484,21 +490,18 @@ function nameOf(members, id) { const m = members.find(x => x.id === id); return 
 function roundHTML(members, R, id, ri) {
   const r = R.rounds[ri][id];
   const mates = r.mates.map(mid => `<span class="mate ${mid === id ? 'me' : ''}">${nameOf(members, mid)}</span>`).join('');
-  const open = r.open.map((q, i) => `<div class="open-q"><b>${i + 1}</b><span>${esc(q)}</span></div>`).join('');
   const secret = r.target ? `
     <div class="secret">
       <div class="secret-label">🤫 秘密任務・你的目標</div>
       <div class="secret-target">${nameOf(members, r.target)}</div>
       ${r.secret.map(s => `<div class="secret-q"><span class="tag">${s.kind}</span><span>想辦法知道：${esc(s.q)}</span></div>`).join('')}
-      <div class="ban">⛔ 不能直接問：${r.secret.map(s => esc(s.ban)).join('・')}</div>
+      ${r.secret.some(s => s.ban) ? `<div class="ban">⛔ 不能直接問：${r.secret.filter(s => s.ban).map(s => esc(s.ban)).join('・')}</div>` : ''}
       <div class="soft">被發現也沒關係，笑一笑繼續聊就好。每套到一題 +1。</div>
     </div>` : '<div class="rule">這輪你的組只有你一個人，請找主持人。</div>';
   return `
-    <div class="rule">跟組員一起挑一攤排隊。冷場時用下面的聊天題，順便完成秘密任務。主持人在 LINE 宣布才換輪。</div>
+    <div class="rule">跟組員一起挑一攤排隊，邊排邊聊，順便完成秘密任務。冷場時聊正在排的食物就好。主持人在 LINE 宣布才換輪。</div>
     <div class="sub-title">👥 ${esc(r.group)} 組組員</div>
     <div class="mates">${mates}</div>
-    <div class="sub-title">🗣️ 聊天題（可以直接問）</div>
-    ${open}
     <div class="sub-title">🤫 秘密任務</div>
     ${secret}`;
 }
@@ -610,7 +613,7 @@ function askConfirm(msg, okText) {
 }
 const STAGE_LABELS = ['等待加入', '第一關・第一輪', '第一關・第二輪', '第二關', '第三關'];
 const NEXT_LABELS = ['', '換第二輪 →', '開始第二關 →', '開始第三關 →', '活動結束'];
-const cleanRoom = s => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+const cleanRoom = s => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '').replace(/^_+/, '');
 const rid = () => Math.random().toString(36).slice(2, 10);
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -640,7 +643,9 @@ if (MODE === 'static') {
     const seed = urlParams.get('seed') || '', myId = parseInt(urlParams.get('m'));
     const me = members.find(m => m.id === myId);
     if (!me || !seed) { ui.innerHTML = '<div style="padding:40px;text-align:center;color:#c0392b;">找不到任務資料。</div>'; return; }
-    const R = buildAll(members, seed);
+    let bank = null;
+    try { bank = JSON.parse(urlParams.get('b') || 'null'); } catch (e) {}
+    const R = buildAll(members, seed, bank);
     ui.innerHTML = `<div class="phone-wrap">
       <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">${esc(me.name)}</div><div class="phone-sub">夜市任務卡（備用版）</div></div>
       <span class="phone-seal">🤫 請勿給別人看・主持人說到哪關再看哪關</span>
@@ -720,7 +725,7 @@ if (MODE === 'player') {
         return;
       }
 
-      const R = buildAll(members, config.seed);
+      const R = buildAll(members, config.seed, config.bank);
       const shown = Math.min(stage, STAGES.length);
       let html = `<div class="phone-wrap">
         <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">${esc(mine.name)}</div><div class="phone-sub">夜市任務卡</div></div>
@@ -748,6 +753,60 @@ if (MODE === 'player') {
 // ════════════════════════════════════════════════════════════════════
 if (MODE === 'host') {
   let be = null, room = '', players = {}, config = null, stage = 0, nGroups = 2, groups = {}, selectedId = null, unsub = [];
+  let bankRemote = null, bankEditing = false;
+  const BANK_PATH = 'rooms/_bank';
+  function currentBank() { return validBank(bankRemote) ? {food: bankRemote.food, life: bankRemote.life, verses: bankRemote.verses} : DEFAULT_BANK; }
+  const qToLines = arr => arr.map(x => x.ban ? `${x.q} | ${x.ban}` : x.q).join('\n');
+  const vToLines = arr => arr.map(x => `${x.text} | ${x.ref}`).join('\n');
+  function fillBank(b) {
+    document.getElementById('bank-food').value = qToLines(b.food);
+    document.getElementById('bank-life').value = qToLines(b.life);
+    document.getElementById('bank-verses').value = vToLines(b.verses);
+  }
+  function bankChip() {
+    const b = currentBank();
+    document.getElementById('bank-chip').textContent = `口味 ${b.food.length}・生活 ${b.life.length}・經文 ${b.verses.length}${validBank(bankRemote) ? '（自訂）' : '（預設）'}`;
+  }
+  function parseLines(txt, kind) {
+    const out = [], bad = [];
+    txt.split('\n').forEach((raw, i) => {
+      const line = raw.trim();
+      if (!line) return;
+      const parts = line.split(/[|｜]/);
+      const a = (parts[0] || '').trim(), b = parts.slice(1).join('|').trim();
+      if (kind === 'verse') { if (!a || !b) bad.push(i + 1); else out.push({text: a, ref: b}); }
+      else { if (!a) bad.push(i + 1); else out.push({q: a, ban: b}); }
+    });
+    return {out, bad};
+  }
+  window.toggleBank = function () {
+    const a = document.getElementById('bank-area'), b = document.getElementById('bank-btn');
+    const open = a.classList.toggle('open'); b.classList.toggle('open', open);
+    b.textContent = open ? '🙈 收起題庫' : '👁️ 檢視／修改題庫';
+    if (open && !bankEditing) fillBank(currentBank());
+  };
+  window.bankDirty = function () { bankEditing = true; document.getElementById('bank-save').textContent = '儲存題庫（尚未儲存）'; };
+  window.bankDefaults = async function () {
+    if (!(await askConfirm('把三個題庫換回預設內容嗎？（要按「儲存題庫」才會生效）', '換回預設'))) return;
+    fillBank(DEFAULT_BANK); bankDirty();
+  };
+  window.bankSave = async function () {
+    const f = parseLines(document.getElementById('bank-food').value, 'q');
+    const l = parseLines(document.getElementById('bank-life').value, 'q');
+    const v = parseLines(document.getElementById('bank-verses').value, 'verse');
+    const err = [];
+    if (!f.out.length) err.push('口味題至少要 1 題');
+    if (!l.out.length) err.push('生活題至少要 1 題');
+    if (!v.out.length) err.push('經文至少要 1 節');
+    if (v.bad.length) err.push(`經文第 ${v.bad.join('、')} 行少了「|」或出處`);
+    const box = document.getElementById('bank-err');
+    if (err.length) { box.innerHTML = '⚠️ ' + err.map(esc).join('<br>⚠️ '); box.style.display = 'block'; return; }
+    box.style.display = 'none';
+    await be.set(BANK_PATH, {food: f.out, life: l.out, verses: v.out, t: Date.now()});
+    bankEditing = false;
+    document.getElementById('bank-save').textContent = '✓ 已儲存';
+    setTimeout(() => { document.getElementById('bank-save').textContent = '儲存題庫'; }, 1800);
+  };
 
   window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('admin-ui').style.display = 'block';
@@ -757,6 +816,12 @@ if (MODE === 'host') {
     badge.textContent = be.mode === 'firebase' ? '● 已連線（大家的手機會同步）' : '示範模式：只能在這台電腦的瀏覽器測試，請設定 Firebase';
     badge.className = 'mode-badge ' + (be.mode === 'firebase' ? 'mode-fb' : 'mode-mock');
     document.getElementById('manual-input').addEventListener('keypress', e => { if (e.key === 'Enter') addManual(); });
+    be.listen(BANK_PATH, v => {
+      bankRemote = v;
+      bankChip();
+      if (!bankEditing && document.getElementById('bank-area').classList.contains('open')) fillBank(currentBank());
+      renderAll();
+    });
     document.getElementById('room-input').addEventListener('keypress', e => { if (e.key === 'Enter') openRoom(); });
     const last = lsGet('nm_host_room', '');
     const d = new Date();
@@ -834,6 +899,10 @@ if (MODE === 'host') {
     const sig = ms => JSON.stringify(ms.map(m => [m.pid, m.name, m.g1, m.g2]));
     return sig(now) !== sig(config.members);
   }
+  function bankChanged() {
+    if (!config || !config.members) return false;
+    return JSON.stringify(validBank(config.bank) ? config.bank : DEFAULT_BANK) !== JSON.stringify(currentBank());
+  }
 
   window.generate = async function () {
     const ms = currentMembers();
@@ -841,7 +910,7 @@ if (MODE === 'host') {
     if (issues.length) { const w = document.getElementById('warn-msg'); w.innerHTML = '⚠️ ' + issues.join('<br>⚠️ '); w.style.display = 'block'; return; }
     if (config && stage >= 1 && !(await askConfirm('重新分配會改變每個人的任務，並回到第一關第一輪。確定嗎？', '重新分配'))) return;
     const seed = `${room}-${Date.now()}`;
-    await be.set(`rooms/${room}/config`, {members: ms, seed});
+    await be.set(`rooms/${room}/config`, {members: ms, seed, bank: currentBank()});
     await be.set(`rooms/${room}/stage`, 1);
   };
   window.moveStage = async function (d) {
@@ -874,6 +943,7 @@ if (MODE === 'host') {
     const changed = configChanged();
     if (issues.length) { warn.innerHTML = '⚠️ ' + issues.join('<br>⚠️ '); warn.style.display = 'block'; }
     else if (changed) { warn.innerHTML = '⚠️ 名單或分組跟目前的任務不一樣（有人新加入、離開或改了組別）。要套用的話請按下方「重新分配」。'; warn.style.display = 'block'; }
+    else if (bankChanged()) { warn.innerHTML = '⚠️ 題庫改過了，目前進行中的任務還是用舊題庫。要套用新題庫請按下方「重新分配」。'; warn.style.display = 'block'; }
     else warn.style.display = 'none';
     document.getElementById('gen-btn').textContent = config ? '🔄 重新分配任務（回到第一關第一輪）' : '✨ 分配任務並開始第一關';
     document.getElementById('gen-btn').className = config ? 'btn btn-secondary btn-full' : 'btn btn-primary btn-full';
@@ -887,7 +957,7 @@ if (MODE === 'host') {
     const nb = document.getElementById('next-btn');
     nb.textContent = NEXT_LABELS[stage]; nb.disabled = stage >= STAGES.length; nb.style.opacity = nb.disabled ? .5 : 1;
 
-    const R = buildAll(config.members, config.seed);
+    const R = buildAll(config.members, config.seed, config.bank);
     document.getElementById('ov-area').innerHTML = overviewHTML(config.members, R);
     document.getElementById('name-tabs').innerHTML = config.members.map(m =>
       `<div class="name-tab ${selectedId === m.id ? 'active' : ''}" onclick="showCard(${m.id})">${esc(m.name)}</div>`).join('');
@@ -914,13 +984,14 @@ if (MODE === 'host') {
     const m = config.members.find(x => x.id === id);
     if (!m) return;
     const slim = config.members.map(x => ({id: x.id, name: x.name, g1: x.g1, g2: x.g2}));
-    const url = `${baseURL()}?m=${id}&seed=${encodeURIComponent(config.seed)}&members=${encodeURIComponent(JSON.stringify(slim))}`;
+    const bankPart = validBank(config.bank) && JSON.stringify(config.bank) !== JSON.stringify(DEFAULT_BANK) ? `&b=${encodeURIComponent(JSON.stringify(config.bank))}` : '';
+    const url = `${baseURL()}?m=${id}&seed=${encodeURIComponent(config.seed)}&members=${encodeURIComponent(JSON.stringify(slim))}${bankPart}`;
     document.getElementById('card-display').innerHTML = `
       <div class="qr-box" id="card-qr"></div>
       <button class="copy-btn" id="copy-card" onclick="copyCard()">🔗 複製 ${esc(m.name)} 的備用連結</button>
       <div style="margin-top:12px">${STAGES.map(st => stageShell(st, st.body(config.members, R, id))).join('')}</div>`;
     window.copyCard = () => copyText(url, document.getElementById('copy-card'), `🔗 複製 ${m.name} 的備用連結`);
-    setTimeout(() => { const el = document.getElementById('card-qr'); if (el) makeQR(el, url, 200); }, 30);
+    setTimeout(() => { const el = document.getElementById('card-qr'); if (!el) return; if (url.length < 2000) makeQR(el, url, 200); else el.innerHTML = '<div class="hint" style="text-align:center">題庫改過，連結太長無法做成 QR code，請用下方按鈕複製連結傳給他</div>'; }, 30);
   }
 }
 </script>

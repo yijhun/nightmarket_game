@@ -147,6 +147,11 @@ details.past .stage { border: none; margin: 0; }
 .bank-ta { width: 100%; min-height: 220px; border: 1.5px solid #ebe3da; border-radius: 8px; padding: 10px 12px; font-size: 13px; line-height: 1.8; font-family: inherit; resize: vertical; }
 .bank-ta:focus { outline: none; border-color: #C8442C; }
 .link-btn { background: none; border: none; color: #a0958b; font-size: 12px; text-decoration: underline; cursor: pointer; margin-top: 14px; font-family: inherit; }
+.s5 .stage-no { background: #B5487A; } .s5 { border-color: #EBC1D4; }
+.star-row { display: flex; gap: 6px; margin: 8px 0 4px; }
+.star { flex: 1; font-size: 28px; line-height: 1; padding: 8px 0; border: 1px solid #ebe3da; border-radius: 10px; background: #fff; color: #c9bfb5; cursor: pointer; }
+.star.on { color: #E3A008; border-color: #F2D29A; background: #FFF8E6; }
+.stars-show { margin-top: 8px; font-size: 14px; color: #4a403a; } .stars-show span { color: #E3A008; font-size: 18px; letter-spacing: 1px; }
 
 /* ── v3 ── */
 .score-chip { display: inline-block; margin-top: 6px; background: #1f1a17; color: #FFD27A; font-size: 13px; font-weight: 700; padding: 4px 14px; border-radius: 20px; }
@@ -469,7 +474,13 @@ function scores(members, answers) {
   });
   return s;
 }
-function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
+const starStr = n => '★'.repeat(n) + '☆'.repeat(5 - n);
+// 評分只算「現在這位推薦官推薦給現在這位對象」的那一筆（中途換人時舊評分不算）
+function rateOf(config, recRate, from) {
+  const r = (recRate || {})[from];
+  return r && config && config.rec && config.rec[from] === r.to ? r.stars : 0;
+}
+function revealHTML(config, answers, recMeta, recPhoto, nameOf, recRate) {
   const members = config.members || [];
   const sc = scores(members, answers);
   const ranked = [...members].sort((x, y) => (sc[y.pid].got + sc[y.pid].guessed) - (sc[x.pid].got + sc[x.pid].guessed));
@@ -487,6 +498,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
       <div class="reveal-sub">🏮 推薦官 ${from ? esc(nameOf(from)) : '—'} 推薦給他</div>
       ${photo ? `<img class="rec-img" src="${photo}" alt="">` : ''}
       ${meta.what ? `<div class="template" style="margin-top:10px">推薦 <b>${esc(meta.what)}</b></div>` : (photo ? '' : '<div class="soft" style="color:#a0958b">（還沒上傳推薦）</div>')}
+      ${from && (meta.what || photo) ? (rateOf(config, recRate, from) ? `<div class="stars-show">${esc(m.name)} 給了 <span>${starStr(rateOf(config, recRate, from))}</span></div>` : `<div class="soft" style="color:#a0958b">${esc(m.name)} 沒有評分</div>`) : ''}
       <div class="reveal-sub">🤫 大家套到關於${esc(m.name)}的事</div>
       ${about.length ? about.map(a => `<div class="mine-item"><b>${esc(nameOf(a.from))}</b> 問到「${esc(a.q)}」→ ${esc(a.a)}${a.verdict === 'no' ? '<span class="tag-wait">答案不對</span>' : ''}${a.solved ? '<span class="tag-ok">被猜中</span>' : ''}</div>`).join('') : '<div class="soft" style="color:#a0958b">沒有人套到他的話 😎</div>'}
     </div>`;
@@ -496,7 +508,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
 
 const urlParams = new URLSearchParams(location.search);
 // ── 自動更新：GitHub Pages 會讓手機快取舊網頁 10 分鐘，發現有新版就自動重新載入 ──
-const BUILD = '5bb4527167e4';
+const BUILD = '36ff5223a153';
 async function checkUpdate() {
   if (location.protocol === 'file:') return;
   try {
@@ -531,10 +543,10 @@ if (MODE === 'player') {
     const asPid = (urlParams.get('as') || '').replace(/[^A-Za-z0-9_-]/g, ''); // 代玩連結：直接用某人的身分
     const PID_KEY = asPid ? `nm_pid_${room}_as_${asPid}` : `nm_pid_${room}${urlParams.get('dev') || ''}`; // dev 參數只用於同一台電腦模擬多支手機
     let pid = asPid || lsGet(PID_KEY, null);
-    let players = {}, config = null, stage = 0, draws = {}, answers = {}, recMeta = {}, myPhoto = null, allPhotos = {}, custom = {};
+    let players = {}, config = null, stage = 0, draws = {}, answers = {}, recMeta = {}, myPhoto = null, allPhotos = {}, custom = {}, recRate = {}, giftPhoto = null, giftFrom = null;
     let layout = '', pendingPhoto = null, photosListening = false, loaded = {};
-    const seenKey = `nm_seen_${room}_${pid}`;
-    let seen = lsGet(seenKey, null);
+    const seenKey = () => `nm_seen_${room}_${pid}`;   // pid 加入後才確定，所以每次都重新算
+    let seen = lsGet(seenKey(), null);
 
     const members = () => (config && config.members) || [];
     const isMember = () => members().some(m => m.pid === pid);
@@ -554,7 +566,7 @@ if (MODE === 'player') {
       if (!pid) return;
       const now = {};
       Object.entries(answers).forEach(([id, a]) => { if (a.to === pid) now['in_' + id] = 1; if (a.from === pid && a.solved) now['solved_' + id] = 1; if (a.from === pid && a.verdict === 'no') now['no_' + id] = 1; });
-      if (seen === null) { seen = now; lsSet(seenKey, seen); return; }
+      if (seen === null) { seen = now; lsSet(seenKey(), seen); return; }
       Object.keys(now).forEach(k => {
         if (seen[k]) return;
         const id = k.split('_').slice(1).join('_'), a = answers[id];
@@ -562,7 +574,7 @@ if (MODE === 'player') {
         else if (k.startsWith('solved_')) toast(`😮 ${nameOf(a.to)} 猜到是你套他的話了！`);
         else toast(`🙈 ${nameOf(a.to)} 說你記的「${a.q}」答案不對，這題不算分`);
       });
-      seen = now; lsSet(seenKey, seen);
+      seen = now; lsSet(seenKey(), seen);
     }
 
     window.joinRoom = async function () {
@@ -701,12 +713,54 @@ if (MODE === 'player') {
       const st = document.getElementById('rec-status');
       st.textContent = '上傳中…';
       try {
-        if (pendingPhoto) { await be.set(`${R}/recPhoto/${pid}`, pendingPhoto); pendingPhoto = null; }
         const hadPhoto = !!(myPhoto || pendingPhoto);
+        if (pendingPhoto) { await be.set(`${R}/recPhoto/${pid}`, pendingPhoto); pendingPhoto = null; }
         await be.set(`${R}/recMeta/${pid}`, {what, photo: hadPhoto, t: Date.now()});
-        st.textContent = '✓ 已儲存，揭曉時大家會看到';
+        st.textContent = '✓ 已送出！對方會收到推薦（不知道是你），揭曉時才公布是誰';
       } catch (e) { st.textContent = '上傳失敗，請再試一次'; }
     };
+
+    // ── 收到的推薦：看得到推薦什麼，看不到是誰；可以評分 ──
+    const giverOf = () => (config && config.rec) ? (Object.keys(config.rec).find(k => config.rec[k] === pid) || null) : null;
+    function watchGift() {
+      const g = giverOf();
+      if (g === giftFrom) return;
+      giftFrom = g; giftPhoto = null;
+      if (g) be.listen(`${R}/recPhoto/${g}`, v => { if (giftFrom === g) { giftPhoto = v; updateGift(); } });
+    }
+    let giftSig = '';
+    function updateGift() {
+      const box = document.getElementById('gift'); if (!box) return;
+      const g = giftFrom, meta = g ? recMeta[g] : null;
+      const my = rateOf(config, recRate, g);
+      const sig = JSON.stringify([g, meta && meta.t, meta && meta.what, !!giftPhoto, giftPhoto ? giftPhoto.length : 0, my]);
+      if (sig === giftSig) return;
+      giftSig = sig;
+      if (!meta) { box.innerHTML = '<div class="soft" style="color:#a0958b">還沒收到推薦。有一位推薦官正在偷偷幫你找攤位…</div>'; return; }
+      box.innerHTML = `${giftPhoto ? `<img class="rec-img" src="${giftPhoto}" alt="">` : (meta.photo ? '<div class="soft" style="color:#a0958b">照片載入中…</div>' : '')}
+        ${meta.what ? `<div class="template" style="margin-top:8px">推薦你 <b>${esc(meta.what)}</b></div>` : ''}
+        <div class="soft" style="color:#8a7f76;margin-top:6px">是誰推薦的？揭曉時才知道。給這個推薦打幾顆星：</div>
+        <div class="star-row">${[1, 2, 3, 4, 5].map(n => `<button class="star ${n <= my ? 'on' : ''}" onclick="rateGift(${n})" aria-label="${n} 顆星">${n <= my ? '★' : '☆'}</button>`).join('')}</div>
+        <div class="soft" style="color:#8a7f76">${my ? `你給了 ${my} 顆星，揭曉前都可以改` : '還沒評分'}</div>`;
+    }
+    window.rateGift = async function (n) {
+      const g = giftFrom; if (!g || !recMeta[g]) return;
+      const old = recRate[g];
+      recRate[g] = {to: pid, stars: n, t: Date.now()};
+      updateGift();
+      try { await be.set(`${R}/recRate/${g}`, recRate[g]); }
+      catch (e) { if (old) recRate[g] = old; else delete recRate[g]; updateGift(); toast('網路不穩，請再按一次'); }
+    };
+    // 推薦送達／更新時跳通知（重新整理不重複跳）
+    const giftKey = () => `nm_gift_${room}_${pid}`;
+    function notifyGift() {
+      const g = giftFrom, meta = g ? recMeta[g] : null;
+      if (!meta || !meta.t) return;
+      const last = lsGet(giftKey(), null);
+      if (last && last.g === g && last.t >= meta.t) return;
+      if (last !== null || loaded.giftInit) toast(last && last.g === g ? `🎁 你的推薦更新了：${meta.what || '看照片'}` : `🎁 有人推薦你：${meta.what || '看照片'}`);
+      lsSet(giftKey(), {g, t: meta.t});
+    }
 
     // ── 畫面 ──
     let curGame = null;
@@ -730,6 +784,7 @@ if (MODE === 'player') {
         const stale = d && (!members().some(m => m.pid === d.target && m.pid !== pid) || (d.g || 0) !== ((config && config.t) || 0) || (d.cid && loaded.q && !custom[d.cid]));
         if (loaded.d && loaded.a && (!d || stale) && !drawing) reroll();
         updatePlay();
+        watchGift(); updateGift(); notifyGift(); loaded.giftInit = true;
       }
       if (layout === 'reveal') updateReveal();
     }
@@ -766,7 +821,7 @@ if (MODE === 'player') {
           <details class="howto"><summary>❓ 怎麼玩</summary><div class="body">
             <b>套話任務</b>：系統隨機給你一個對象和一題。聊天時繞個彎問出答案，不能用卡片上「不能直接問」的問法。問到後把答案打進來，會自動換下一題；不想問這題可以隨時「換一題」。<br>
             <b>有人在套你的話</b>：別人記下你的答案時你會收到通知，但不知道是誰。你可以按「答案對／不對」，不對的話對方那題不算分。每則通知可以猜一次是誰，猜中 +1；猜錯不扣分，揭曉時才知道是誰。<br>
-            <b>秘密推薦官</b>：幫你的推薦對象找一攤他可能會喜歡的，拍照上傳（不用買），寫下推薦什麼，最後揭曉時大家一起看。<br>
+            <b>秘密推薦官</b>：幫你的推薦對象找一攤他可能會喜歡的，拍照上傳（不用買），寫下推薦什麼。送出後他會馬上看到推薦，但不知道是誰推薦的，還可以打 1–5 顆星；揭曉時才公布推薦官和星數。<br>
             套到一題 +1，猜中一次 +1。</div></details>
           <div class="stage s1"><div class="stage-head"><span class="stage-no">任務</span><span class="stage-title">🤫 套話任務</span></div>
             <div class="stage-body">
@@ -785,6 +840,8 @@ if (MODE === 'player') {
             </div></details>
           <div class="stage s3"><div class="stage-head"><span class="stage-no">通知</span><span class="stage-title">📬 有人在套你的話</span><span class="stage-time" id="inbox-count"></span></div>
             <div class="stage-body" id="inbox"></div></div>
+          <div class="stage s5"><div class="stage-head"><span class="stage-no">收到</span><span class="stage-title">🎁 有人推薦你</span></div>
+            <div class="stage-body" id="gift"></div></div>
           <div class="stage s2"><div class="stage-head"><span class="stage-no">推薦</span><span class="stage-title">🏮 秘密推薦官</span></div>
             <div class="stage-body">
               <div class="rec"><div class="secret-label" style="color:#B36B00">你要幫他找攤位（不要被發現）</div><div class="rec-target" id="rec-target"></div>
@@ -800,6 +857,7 @@ if (MODE === 'player') {
         document.getElementById('ans').addEventListener('keypress', e => { if (e.key === 'Enter') submitAns(); });
         updateRec(true);
         updateCustom();
+        giftSig = '';
         listenMyPhoto();
         return;
       }
@@ -889,7 +947,7 @@ if (MODE === 'player') {
     }
     function updateReveal() {
       if (layout !== 'reveal') return;
-      document.getElementById('reveal').innerHTML = revealHTML(config, answers, recMeta, allPhotos, nameOf);
+      document.getElementById('reveal').innerHTML = revealHTML(config, answers, recMeta, allPhotos, nameOf, recRate);
     }
 
     // 所有函式和變數都宣告好之後才開始接收資料（避免重新整理時出錯）
@@ -900,6 +958,7 @@ if (MODE === 'player') {
     be.listen(`${R}/answers`, v => { answers = v || {}; ready('a'); notify(); refresh(); });
     be.listen(`${R}/recMeta`, v => { recMeta = v || {}; refresh(); });
     be.listen(`${R}/custom`, v => { custom = v || {}; ready('q'); refresh(); updateCustom(); });
+    be.listen(`${R}/recRate`, v => { recRate = v || {}; refresh(); });
   });
 }
 
@@ -907,7 +966,7 @@ if (MODE === 'player') {
 //  主持人
 // ════════════════════════════════════════════════════════════════════
 if (MODE === 'host') {
-  let be = null, room = '', players = {}, config = null, stage = 0, answers = {}, recMeta = {}, draws = {}, custom = {};
+  let be = null, room = '', players = {}, config = null, stage = 0, answers = {}, recMeta = {}, draws = {}, custom = {}, recRate = {};
   let bankRemote = null, bankFile = null, bankEditing = false, revealPhotos = null;
   const BANK_PATH = 'rooms/_bank';
   const R = () => `rooms/${room}`;
@@ -951,6 +1010,7 @@ if (MODE === 'host') {
     be.listen(`${R()}/recMeta`, v => { recMeta = v || {}; renderAll(); });
     be.listen(`${R()}/draws`, v => { draws = v || {}; });
     be.listen(`${R()}/custom`, v => { custom = v || {}; renderAll(); });
+    be.listen(`${R()}/recRate`, v => { recRate = v || {}; renderAll(); });
   };
   window.leaveRoom = function () { lsSet('nm_host_room', ''); location.reload(); };
   window.copyJoin = function () { copyText(`${baseURL()}?room=${room}`, document.getElementById('copy-join'), '🔗 複製加入連結（貼到 LINE 群組）'); };
@@ -1005,7 +1065,7 @@ if (MODE === 'host') {
     await be.set(`${R()}/stage`, 1);
   };
   async function clearPlay() {
-    for (const k of ['draws', 'answers', 'recMeta', 'recPhoto']) await be.remove(`${R()}/${k}`);
+    for (const k of ['draws', 'answers', 'recMeta', 'recPhoto', 'recRate']) await be.remove(`${R()}/${k}`);
   }
   window.addLate = async function () {
     const late = playerList().filter(p => !inGame(p.pid));
@@ -1057,7 +1117,7 @@ if (MODE === 'host') {
 
     const sc = scores(members(), answers);
     document.getElementById('dash').innerHTML = `<table class="ov dash"><tr><th>名字</th><th class="c">套到</th><th class="c">被套</th><th class="c">猜中</th><th class="c">推薦</th></tr>
-      ${members().map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].asked}</td><td class="c">${sc[m.pid].guessed}</td><td class="c">${recMeta[m.pid] ? (recMeta[m.pid].photo ? '📷' : '✓') : '—'}</td></tr>`).join('')}</table>
+      ${members().map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].asked}</td><td class="c">${sc[m.pid].guessed}</td><td class="c">${recMeta[m.pid] ? (recMeta[m.pid].photo ? '📷' : '✓') : '—'}${rateOf(config, recRate, m.pid) ? `<br><span style="color:#D98B1E;font-size:11px">${rateOf(config, recRate, m.pid)}★</span>` : ''}</td></tr>`).join('')}</table>
       <div class="hint">共套到 ${Object.keys(answers).length} 題・推薦完成 ${members().filter(m => recMeta[m.pid]).length}／${members().length} 人</div>`;
     const cl = Object.entries(custom).filter(([, x]) => x && x.q).sort((a, b) => a[1].t - b[1].t);
     document.getElementById('custom-list').innerHTML = cl.length
@@ -1070,7 +1130,7 @@ if (MODE === 'host') {
       ${members().map(m => `<tr><td>${esc(m.name)}</td><td>${esc(nameOf(config.rec[m.pid]))}</td></tr>`).join('')}</table>`;
     if (stage >= 2) {
       if (revealPhotos === null) { revealPhotos = {}; be.listen(`${R()}/recPhoto`, v => { revealPhotos = v || {}; renderAll(); }); }
-      document.getElementById('host-reveal').innerHTML = revealHTML(config, answers, recMeta, revealPhotos, nameOf);
+      document.getElementById('host-reveal').innerHTML = revealHTML(config, answers, recMeta, revealPhotos, nameOf, recRate);
     }
   }
   // 代玩連結：沒手機／手機沒電的人，用別人的手機掃這個 QR 就能用自己的身分玩

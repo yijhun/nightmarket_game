@@ -491,6 +491,23 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
 }
 
 const urlParams = new URLSearchParams(location.search);
+// ── 自動更新：GitHub Pages 會讓手機快取舊網頁 10 分鐘，發現有新版就自動重新載入 ──
+const BUILD = '2ad7e12fa29a';
+async function checkUpdate() {
+  if (location.protocol === 'file:') return;
+  try {
+    const r = await fetch(`${location.pathname}?vc=${Date.now()}`, {cache: 'no-store'});
+    const m = (await r.text()).match(/const BUILD = '([0-9a-f]{8,})'/);
+    if (!m || m[1] === BUILD) return;
+    const key = 'nm_upd_' + m[1];
+    if (sessionStorage.getItem(key)) return;   // 已經試過一次就不再重載，避免無限循環
+    sessionStorage.setItem(key, '1');
+    const u = new URL(location.href); u.searchParams.set('v', m[1].slice(0, 8));
+    location.replace(u.toString());
+  } catch (e) {}
+}
+checkUpdate();
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
 const MODE = urlParams.has('room') ? 'player' : 'host';
 
 // ════════════════════════════════════════════════════════════════════
@@ -580,7 +597,7 @@ if (MODE === 'player') {
       let avail = all.filter(x => !used.has(x.q));
       if (!avail.length) avail = all;
       const q = pick(avail);
-      return {target, q: q.q, ban: q.ban || '', kind: q.kind, t: Date.now()};
+      return {target, q: q.q, ban: q.ban || '', kind: q.kind, g: (config && config.t) || 0, t: Date.now()};
     }
     let drawing = false;
     window.reroll = async function () {
@@ -658,6 +675,7 @@ if (MODE === 'player') {
     };
 
     // ── 畫面 ──
+    let curGame = null;
     function refresh() {
       if (!(loaded.p && loaded.c && loaded.s)) return;
       let want;
@@ -666,11 +684,16 @@ if (MODE === 'player') {
       else if (!config || stage < 1) want = 'wait';
       else if (!isMember()) want = 'late';
       else want = 'play';
+      const g = (config && config.t) || 0;
+      if (g !== curGame) {                      // 主持人按了「重新開始」：清掉上一局留在畫面上的東西
+        curGame = g; updateRec.filled = false; pendingPhoto = null;
+        if (layout === 'play') layout = '';
+      }
       if (want !== layout) { layout = want; build(); }
       const jl = document.getElementById('joined'); if (jl) jl.innerHTML = joinedList();
       if (layout === 'play') {
         const d = draws[pid];
-        const stale = d && !members().some(m => m.pid === d.target && m.pid !== pid);
+        const stale = d && (!members().some(m => m.pid === d.target && m.pid !== pid) || (d.g || 0) !== ((config && config.t) || 0));
         if (loaded.d && loaded.a && (!d || stale) && !drawing) reroll();
         updatePlay();
       }
@@ -680,6 +703,7 @@ if (MODE === 'player') {
       return `<div class="joined-list">${Object.entries(players).sort((a, b) => a[1].t - b[1].t).map(([p, v]) => `<span class="mate ${p === pid ? 'me' : ''}">${esc(v.name)}</span>`).join('')}</div>`;
     }
     function build() {
+      inboxSig = '';   // 畫面重建後通知區是空的，要重新畫
       if (layout === 'join') {
         ui.innerHTML = `<div class="phone-wrap">
           <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">夜市任務</div><div class="phone-sub">梅竹團契・後站夜市</div></div>

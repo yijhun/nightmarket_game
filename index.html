@@ -474,10 +474,10 @@ function scores(members, answers, shares) {
     if (s[a.from] && a.verdict !== 'no') s[a.from].got++;
     if (s[a.to]) { s[a.to].asked++; if (a.solved) s[a.to].guessed++; }
   });
-  // 匿名分享：分享一則 +1；收到的人猜中是誰 +1
+  // 匿名出題：出一題 +1；收到的人猜對答案（出題的人判斷）+1
   Object.values(shares || {}).forEach(x => {
     if (s[x.from]) s[x.from].shared++;
-    if (s[x.to]) { s[x.to].recv++; if (x.solved) s[x.to].sguessed++; }
+    if (s[x.to]) { s[x.to].recv++; if (x.verdict === 'ok') s[x.to].sguessed++; }
   });
   return s;
 }
@@ -493,9 +493,9 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf, recRate, shares)
   const sc = scores(members, answers, shares);
   const ranked = [...members].sort((x, y) => totalOf(sc[y.pid]) - totalOf(sc[x.pid]));
   let html = `<div class="reveal-card"><div class="reveal-name">🏆 得分</div>
-    <table class="rank"><tr><th>名字</th><th class="c">套到</th><th class="c">分享</th><th class="c">猜中</th><th class="c">總分</th></tr>
+    <table class="rank"><tr><th>名字</th><th class="c">套到</th><th class="c">出題</th><th class="c">猜中</th><th class="c">總分</th></tr>
     ${ranked.map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].shared}</td><td class="c">${sc[m.pid].guessed + sc[m.pid].sguessed}</td><td class="c"><b>${totalOf(sc[m.pid])}</b></td></tr>`).join('')}
-    </table><div class="soft" style="color:#8a7f76">套到一題 +1（對方說不對的不算）、匿名分享一則 +1、猜中是誰套你的話或是誰分享給你 +1</div></div>`;
+    </table><div class="soft" style="color:#8a7f76">套到一題 +1（對方說不對的不算）、匿名出題一則 +1、猜中是誰套你的話 +1、猜對別人出的題 +1</div></div>`;
   members.forEach(m => {
     const from = Object.keys(config.rec || {}).find(k => config.rec[k] === m.pid);
     const meta = (recMeta || {})[from] || {};
@@ -510,7 +510,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf, recRate, shares)
       <div class="reveal-sub">🤫 大家套到關於${esc(m.name)}的事</div>
       ${about.length ? about.map(a => `<div class="mine-item"><b>${esc(nameOf(a.from))}</b> 問到「${esc(a.q)}」→ ${esc(a.a)}${a.verdict === 'no' ? '<span class="tag-wait">答案不對</span>' : ''}${a.solved ? '<span class="tag-ok">被猜中</span>' : ''}</div>`).join('') : '<div class="soft" style="color:#a0958b">沒有人套到他的話 😎</div>'}
       ${(() => { const sh = Object.values(shares || {}).filter(x => x.from === m.pid).sort((a, b) => a.t - b.t);
-        return sh.length ? `<div class="reveal-sub">💌 ${esc(m.name)} 匿名分享的事</div>` + sh.map(x => `<div class="mine-item">「${esc(x.q)}」→ ${esc(x.a)}<span style="color:#8a7f76;font-size:12px">（給了 ${esc(nameOf(x.to))}）</span>${x.solved ? '<span class="tag-ok">被猜中</span>' : x.guess ? '<span class="tag-wait">猜錯</span>' : ''}</div>`).join('') : ''; })()}
+        return sh.length ? `<div class="reveal-sub">💌 ${esc(m.name)} 匿名出的題</div>` + sh.map(x => `<div class="mine-item">「${esc(x.q)}」→ ${esc(x.a)}<span style="color:#8a7f76;font-size:12px">（給 ${esc(nameOf(x.to))}${x.g ? `，他猜「${esc(x.g)}」` : '，沒猜'}）</span>${x.verdict === 'ok' ? '<span class="tag-ok">猜對</span>' : x.verdict === 'no' ? '<span class="tag-wait">不對</span>' : ''}</div>`).join('') : ''; })()}
     </div>`;
   });
   return html;
@@ -518,7 +518,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf, recRate, shares)
 
 const urlParams = new URLSearchParams(location.search);
 // ── 自動更新：GitHub Pages 會讓手機快取舊網頁 10 分鐘，發現有新版就自動重新載入 ──
-const BUILD = '758b1ade2b18';
+const BUILD = '8d9aaff0f138';
 async function checkUpdate() {
   if (location.protocol === 'file:') return;
   try {
@@ -577,13 +577,17 @@ if (MODE === 'player') {
       const now = {};
       if (!loaded.a || !loaded.sh) return;
       Object.entries(answers).forEach(([id, a]) => { if (a.to === pid) now['in_' + id] = 1; if (a.from === pid && a.solved) now['solved_' + id] = 1; if (a.from === pid && a.verdict === 'no') now['no_' + id] = 1; });
-      Object.entries(shares).forEach(([id, x]) => { if (x.to === pid) now['sh_' + id] = 1; if (x.from === pid && x.solved) now['shs_' + id] = 1; });
+      Object.entries(shares).forEach(([id, x]) => {
+        if (x.to === pid) { now['sh_' + id] = 1; if (x.verdict) now['shv_' + id] = 1; }
+        if (x.from === pid && x.g) now['shg_' + id] = 1;
+      });
       if (seen === null) { seen = now; lsSet(seenKey(), seen); return; }
       Object.keys(now).forEach(k => {
         if (seen[k]) return;
         const id = k.split('_').slice(1).join('_'), a = answers[id];
-        if (k.startsWith('sh_')) { toast(`💌 有人匿名分享給你：「${shares[id].q}」`); return; }
-        if (k.startsWith('shs_')) { toast('😮 收到你分享的人猜中是你了！'); return; }
+        if (k.startsWith('sh_')) { toast(`💌 有人匿名出題考你：「${shares[id].q}」`); return; }
+        if (k.startsWith('shg_')) { toast(`💌 有人猜了你的「${shares[id].q}」：${shares[id].g}，去判斷對不對`); return; }
+        if (k.startsWith('shv_')) { toast(shares[id].verdict === 'ok' ? '🎉 出題的人說你猜對了！+1' : `🙈 不對喔，答案是：${shares[id].a}`); return; }
         if (k.startsWith('in_')) toast('📬 有人套到你的話了！猜猜是誰？');
         else if (k.startsWith('solved_')) toast(`😮 ${nameOf(a.to)} 猜到是你套他的話了！`);
         else toast(`🙈 ${nameOf(a.to)} 說你記的「${a.q}」答案不對，這題不算分`);
@@ -769,23 +773,52 @@ if (MODE === 'player') {
       shares[id] = rec; inp.value = '';
       shareQ = makeShareQ(); lsSet(shKey(), shareQ);
       updatePlay(); updateShare(true);
-      toast('💌 已匿名送出 +1！你不會知道誰收到');
+      toast('💌 已匿名送出 +1！對方猜了之後換你判斷');
       try { await be.set(`${R}/shares/${id}`, rec); }
       catch (e) { delete shares[id]; inp.value = text; updatePlay(); toast('網路不穩，請再按一次'); }
       finally { sharing = false; }
     };
-    window.guessShare = async function (id) {
-      const sel = document.getElementById('gs_' + id);
+    let shareBusy = {};
+    window.guessShareAns = async function (id) {
+      const inp = document.getElementById('gs_' + id);
       const x = shares[id];
-      if (!sel || !x || x.guess || !sel.value) return;
-      if (!(await askConfirm(`只能猜一次，確定猜「${nameOf(sel.value)}」嗎？`, '確定'))) return;
-      const g = sel.value, ok = g === x.from;
-      shares[id] = Object.assign({}, x, {guess: g}, ok ? {solved: true} : {});
-      updatePlay();
-      toast(ok ? `🎉 猜中了！就是 ${nameOf(x.from)} +1` : '沒猜中，揭曉時就知道是誰了');
-      try { await Promise.all([be.set(`${R}/shares/${id}/guess`, g), ok ? be.set(`${R}/shares/${id}/solved`, true) : null]); }
-      catch (e) { shares[id] = x; updatePlay(); toast('網路不穩，請再猜一次'); }
+      if (!inp || !x || x.g || shareBusy[id]) return;
+      const g = (inp.value || '').trim().slice(0, 60);
+      if (!g) { inp.focus(); toast('先寫你猜的答案'); return; }
+      shareBusy[id] = true;
+      const gt = Date.now();
+      shares[id] = Object.assign({}, x, {g, gt});
+      updateShare();
+      toast('✓ 送出了，等出題的人判斷');
+      try { await Promise.all([be.set(`${R}/shares/${id}/g`, g), be.set(`${R}/shares/${id}/gt`, gt)]); }
+      catch (e) { shares[id] = x; updateShare(); toast('網路不穩，請再按一次'); }
+      finally { shareBusy[id] = false; }
     };
+    window.judgeShare = async function (id, v) {
+      const x = shares[id];
+      if (!x || x.from !== pid || !x.g || x.verdict === v) return;
+      shares[id] = Object.assign({}, x, {verdict: v});
+      updatePlay();
+      try { await be.set(`${R}/shares/${id}/verdict`, v); }
+      catch (e) { shares[id] = x; updatePlay(); toast('網路不穩，請再按一次'); }
+    };
+    // 分 key 的清單：只重畫有變動的那一則，保留正在輸入的內容
+    function keyedList(box, items, emptyHTML) {
+      if (!items.length) { box.innerHTML = emptyHTML; return; }
+      const empty = box.querySelector(':scope > .soft'); if (empty) empty.remove();
+      const want = new Set(items.map(it => it.id));
+      [...box.children].forEach(c => { if (!want.has(c.id)) c.remove(); });
+      items.forEach((it, idx) => {
+        let el = document.getElementById(it.id);
+        if (!el) { el = document.createElement('div'); el.id = it.id; }
+        if (el.dataset.k !== it.key) {
+          const prev = el.querySelector('input,select'), keepVal = prev ? prev.value : '';
+          el.className = it.cls; el.innerHTML = it.html(); el.dataset.k = it.key;
+          const now = el.querySelector('input,select'); if (now && keepVal) now.value = keepVal;
+        }
+        if (box.children[idx] !== el) box.insertBefore(el, box.children[idx] || null);
+      });
+    }
     let shareSig = '';
     function updateShare(force) {
       const qbox = document.getElementById('sh-task'); if (!qbox) return;
@@ -795,31 +828,29 @@ if (MODE === 'player') {
         qbox.innerHTML = `<div class="task-q"><span class="tag" style="font-size:10px;color:#1f1a17;background:#F4C0D1;border-radius:4px;padding:1px 5px;margin-right:6px">${esc(shareQ.kind)}</span>分享你自己的：${esc(shareQ.q)}</div>`;
       }
       const recv = Object.entries(shares).filter(([, x]) => x.to === pid).sort((a, b) => b[1].t - a[1].t);
-      const sig = JSON.stringify(recv.map(([id, x]) => [id, x.guess, x.solved])) + members().length;
-      document.getElementById('sh-count').textContent = recv.length ? `${recv.filter(([, x]) => !x.guess).length} 則待猜` : '';
+      const sent = Object.entries(shares).filter(([, x]) => x.from === pid).sort((a, b) => b[1].t - a[1].t);
+      const sig = JSON.stringify([recv.map(([id, x]) => [id, x.g, x.verdict]), sent.map(([id, x]) => [id, x.g, x.verdict])]);
+      document.getElementById('sh-count').textContent = recv.length ? `${recv.filter(([, x]) => !x.g).length} 題待猜` : '';
+      const toJudge = sent.filter(([, x]) => x.g && !x.verdict).length;
+      document.getElementById('sh-judge').textContent = toJudge ? `${toJudge} 題等你判斷` : '';
       if (sig === shareSig) return;
       shareSig = sig;
-      const box = document.getElementById('sh-in');
-      if (!recv.length) { box.innerHTML = '<div class="soft" style="color:#a0958b">還沒有人分享給你。</div>'; return; }
-      const empty = box.querySelector(':scope > .soft'); if (empty) empty.remove();
-      const want = new Set(recv.map(([id]) => 'sh_' + id));
-      [...box.children].forEach(c => { if (!want.has(c.id)) c.remove(); });
-      const opts = members().filter(m => m.pid !== pid).map(m => `<option value="${m.pid}">${esc(m.name)}</option>`).join('');
-      recv.forEach(([id, x], idx) => {
-        let el = document.getElementById('sh_' + id);
-        if (!el) { el = document.createElement('div'); el.id = 'sh_' + id; }
-        const key = JSON.stringify([x.guess, x.solved, members().length]);
-        if (el.dataset.k !== key) {
-          const prev = el.querySelector('select'), keepVal = prev ? prev.value : '';
-          el.className = 'inbox-item ' + (x.guess ? '' : 'new');
-          el.innerHTML = `<div class="inbox-q">有人分享了他的「${esc(x.q)}」</div><div class="inbox-a">${esc(x.a)}</div>` + (x.guess
-            ? (x.solved ? `<div class="solved">✓ 你猜 ${esc(nameOf(x.guess))}，猜中了！+1</div>` : `<div class="wrong" style="font-size:14px">✗ 你猜 ${esc(nameOf(x.guess))}，沒猜中（揭曉時公布是誰）</div>`)
-            : `<div class="guess-row"><select id="gs_${id}"><option value="">猜是誰分享的（只能猜一次）</option>${opts}</select><button class="btn btn-primary btn-sm" onclick="guessShare('${id}')">猜</button></div>`);
-          el.dataset.k = key;
-          const sl = el.querySelector('select'); if (sl && keepVal) sl.value = keepVal;
-        }
-        if (box.children[idx] !== el) box.insertBefore(el, box.children[idx] || null);
-      });
+      keyedList(document.getElementById('sh-in'), recv.map(([id, x]) => ({
+        id: 'sh_' + id, key: JSON.stringify([x.g, x.verdict]), cls: 'inbox-item ' + (x.g ? '' : 'new'),
+        html: () => `<div class="inbox-q">有人匿名出題考你：</div><div class="inbox-a">「${esc(x.q)}」他的答案是什麼？</div>` + (
+          !x.g ? `<div class="guess-row"><input class="field" style="margin:0" id="gs_${id}" placeholder="猜他的答案" maxlength="60" autocomplete="off"><button class="btn btn-primary btn-sm" onclick="guessShareAns('${id}')">猜</button></div>`
+          : !x.verdict ? `<div class="soft" style="color:#8a7f76">你猜「${esc(x.g)}」，等出題的人判斷…</div>`
+          : x.verdict === 'ok' ? `<div class="solved">✓ 你猜「${esc(x.g)}」，猜對了！+1</div><div class="soft" style="color:#8a7f76">答案：${esc(x.a)}</div>`
+          : `<div class="wrong" style="font-size:14px">✗ 你猜「${esc(x.g)}」，不對</div><div class="soft" style="color:#8a7f76">答案：${esc(x.a)}</div>`)
+      })), '<div class="soft" style="color:#a0958b">還沒有人出題給你。</div>');
+      keyedList(document.getElementById('sh-mine'), sent.map(([id, x]) => ({
+        id: 'sm_' + id, key: JSON.stringify([x.g, x.verdict]), cls: 'inbox-item ' + (x.g && !x.verdict ? 'new' : ''),
+        html: () => `<div class="inbox-q">你出的「${esc(x.q)}」・你的答案：${esc(x.a)}</div>` + (
+          !x.g ? '<div class="soft" style="color:#a0958b">對方還沒猜</div>'
+          : `<div class="inbox-a">對方猜：${esc(x.g)}</div><div class="row-btns" style="margin:0">
+              <button class="btn btn-sm ${x.verdict === 'ok' ? 'btn-primary' : 'btn-secondary'}" onclick="judgeShare('${id}','ok')">✓ 猜對</button>
+              <button class="btn btn-sm ${x.verdict === 'no' ? 'btn-primary' : 'btn-secondary'}" onclick="judgeShare('${id}','no')">✗ 不對</button></div>`)
+      })), '');
     }
 
     // ── 收到的推薦：看得到推薦什麼，看不到是誰；可以評分 ──
@@ -924,8 +955,8 @@ if (MODE === 'player') {
             <b>套話任務</b>：系統隨機給你一個對象和一題。聊天時繞個彎問出答案，不能用卡片上「不能直接問」的問法。問到後把答案打進來，會自動換下一題；不想問這題可以隨時「換一題」。<br>
             <b>有人在套你的話</b>：別人記下你的答案時你會收到通知，但不知道是誰。你可以按「答案對／不對」，不對的話對方那題不算分。每則通知可以猜一次是誰，猜中 +1；猜錯不扣分，揭曉時才知道是誰。<br>
             <b>秘密推薦官</b>：幫你的推薦對象找一攤他可能會喜歡的，拍照上傳（不用買），寫下推薦什麼。送出後他會馬上看到推薦，但不知道是誰推薦的，還可以打 1–5 顆星；揭曉時才公布推薦官和星數。<br>
-            <b>匿名分享</b>：抽一題回答你自己的事，系統隨機送給一個人。你不知道誰收到，他也不知道是你，他可以猜一次。<br>
-            套到一題 +1，分享一則 +1，猜中一次 +1。</div></details>
+            <b>匿名出題</b>：抽一題寫下你自己的答案，系統隨機送給一個人猜。你不知道誰收到，他也不知道是你；他猜一次，由你判斷對不對。<br>
+            套到一題 +1，出一題 +1，猜中是誰 +1，猜對別人出的題 +1。</div></details>
           <div class="stage s1"><div class="stage-head"><span class="stage-no">任務</span><span class="stage-title">🤫 套話任務</span></div>
             <div class="stage-body">
               <div class="secret" id="task-info"></div>
@@ -941,14 +972,15 @@ if (MODE === 'player') {
               <div class="soft" style="color:#8a7f76">新題目會優先被下一個換題的人抽到。不會顯示是誰出的，也不會拿來問你自己。</div>
               <div id="cq-mine"></div>
             </div></details>
-          <div class="stage s6"><div class="stage-head"><span class="stage-no">分享</span><span class="stage-title">💌 匿名分享自己</span></div>
+          <div class="stage s6"><div class="stage-head"><span class="stage-no">出題</span><span class="stage-title">💌 匿名出題考別人</span><span class="stage-time" id="sh-judge"></span></div>
             <div class="stage-body">
               <div class="secret" id="sh-task"></div>
-              <input class="field" id="sh-a" placeholder="寫下你自己的回答" maxlength="60" autocomplete="off">
+              <input class="field" id="sh-a" placeholder="寫下你自己的答案（對方看不到）" maxlength="60" autocomplete="off">
               <div class="row-btns"><button class="btn btn-secondary" onclick="rerollShare()">🔀 換一題</button><button class="btn btn-primary" onclick="submitShare()">匿名送出</button></div>
-              <div class="soft" style="color:#8a7f76">會隨機送給一個人。你不會知道誰收到，他也不知道是你。分享一則 +1。</div>
+              <div class="soft" style="color:#8a7f76">會隨機送給一個人猜你的答案。你不會知道誰收到，他也不知道是你。他猜了之後由你判斷對不對。出一題 +1。</div>
+              <div id="sh-mine"></div>
             </div></div>
-          <div class="stage s7"><div class="stage-head"><span class="stage-no">收到</span><span class="stage-title">💌 有人匿名分享給你</span><span class="stage-time" id="sh-count"></span></div>
+          <div class="stage s7"><div class="stage-head"><span class="stage-no">收到</span><span class="stage-title">💌 有人出題考你</span><span class="stage-time" id="sh-count"></span></div>
             <div class="stage-body" id="sh-in"></div></div>
           <div class="stage s3"><div class="stage-head"><span class="stage-no">通知</span><span class="stage-title">📬 有人在套你的話</span><span class="stage-time" id="inbox-count"></span></div>
             <div class="stage-body" id="inbox"></div></div>
@@ -999,7 +1031,7 @@ if (MODE === 'player') {
     let inboxSig = '';
     function updatePlay() {
       const sc = scores(members(), answers, shares)[pid] || {got: 0, guessed: 0, shared: 0, sguessed: 0};
-      document.getElementById('score').textContent = `得分 ${totalOf(sc)}（套到 ${sc.got}・分享 ${sc.shared}・猜中 ${sc.guessed + sc.sguessed}）`;
+      document.getElementById('score').textContent = `得分 ${totalOf(sc)}（套到 ${sc.got}・出題 ${sc.shared}・猜中 ${sc.guessed + sc.sguessed}）`;
       updateShare();
       const d = draws[pid];
       document.getElementById('task-info').innerHTML = d ? `
@@ -1039,10 +1071,10 @@ if (MODE === 'player') {
       }
       // 我記下的答案
       const mine = Object.values(answers).filter(a => a.from === pid).sort((x, y) => y.t - x.t);
-      document.getElementById('mine-sum').textContent = `📝 我記下的答案和分享（${mine.length + Object.values(shares).filter(x => x.from === pid).length}）`;
+      document.getElementById('mine-sum').textContent = `📝 我記下的答案和出的題（${mine.length + Object.values(shares).filter(x => x.from === pid).length}）`;
       document.getElementById('mine').innerHTML = mine.length ? mine.map(a => `<div class="mine-item"><b>${esc(nameOf(a.to))}</b>：${esc(a.q)} → ${esc(a.a)}${a.verdict === 'ok' ? '<span class="tag-ok">對方說對</span>' : a.verdict === 'no' ? '<span class="tag-wait">對方說不對・不算分</span>' : ''}${a.solved ? '<span class="tag-ok">被猜到了</span>' : (a.guess ? '<span class="tag-ok">對方猜錯人</span>' : '<span class="tag-wait">還沒被猜</span>')}</div>`).join('') : '<div class="soft" style="color:#a0958b">還沒有</div>';
       const myShares = Object.values(shares).filter(x => x.from === pid).sort((a, b) => b.t - a.t);
-      if (myShares.length) document.getElementById('mine').innerHTML += `<div class="reveal-sub" style="margin-top:10px">💌 我匿名分享的（${myShares.length}）</div>` + myShares.map(x => `<div class="mine-item">「${esc(x.q)}」→ ${esc(x.a)}${x.solved ? '<span class="tag-ok">被猜到了</span>' : x.guess ? '<span class="tag-ok">對方猜錯人</span>' : '<span class="tag-wait">還沒被猜</span>'}</div>`).join('');
+      if (myShares.length) document.getElementById('mine').innerHTML += `<div class="reveal-sub" style="margin-top:10px">💌 我出的題（${myShares.length}）</div>` + myShares.map(x => `<div class="mine-item">「${esc(x.q)}」→ ${esc(x.a)}${x.verdict === 'ok' ? '<span class="tag-ok">對方猜對</span>' : x.verdict === 'no' ? '<span class="tag-ok">對方猜錯</span>' : x.g ? '<span class="tag-wait">等你判斷</span>' : '<span class="tag-wait">還沒猜</span>'}</div>`).join('');
       updateRec();
     }
     function updateRec(first) {
@@ -1235,9 +1267,9 @@ if (MODE === 'host') {
     document.getElementById('reveal-btn').style.display = stage >= 2 ? 'none' : 'block';
 
     const sc = scores(members(), answers, shares);
-    document.getElementById('dash').innerHTML = `<table class="ov dash"><tr><th>名字</th><th class="c">套到</th><th class="c">被套</th><th class="c">分享</th><th class="c">猜中</th><th class="c">推薦</th></tr>
+    document.getElementById('dash').innerHTML = `<table class="ov dash"><tr><th>名字</th><th class="c">套到</th><th class="c">被套</th><th class="c">出題</th><th class="c">猜中</th><th class="c">推薦</th></tr>
       ${members().map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].asked}</td><td class="c">${sc[m.pid].shared}</td><td class="c">${sc[m.pid].guessed + sc[m.pid].sguessed}</td><td class="c">${recMeta[m.pid] ? (recMeta[m.pid].photo ? '📷' : '✓') : '—'}${rateOf(config, recRate, m.pid) ? `<br><span style="color:#D98B1E;font-size:11px">${rateOf(config, recRate, m.pid)}★</span>` : ''}</td></tr>`).join('')}</table>
-      <div class="hint">共套到 ${Object.keys(answers).length} 題・分享 ${Object.keys(shares).length} 則・推薦完成 ${members().filter(m => recMeta[m.pid]).length}／${members().length} 人</div>`;
+      <div class="hint">共套到 ${Object.keys(answers).length} 題・匿名出題 ${Object.keys(shares).length} 題・推薦完成 ${members().filter(m => recMeta[m.pid]).length}／${members().length} 人</div>`;
     const cl = Object.entries(custom).filter(([, x]) => x && x.q).sort((a, b) => a[1].t - b[1].t);
     document.getElementById('custom-list').innerHTML = cl.length
       ? `<div class="sub-title">✍️ 大家出的題（${cl.length}）</div>` + cl.map(([id, x]) => {

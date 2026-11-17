@@ -436,7 +436,7 @@ function scores(members, answers) {
   const s = {};
   members.forEach(m => { s[m.pid] = {got: 0, asked: 0, guessed: 0}; });
   Object.values(answers || {}).forEach(a => {
-    if (s[a.from]) s[a.from].got++;
+    if (s[a.from] && a.verdict !== 'no') s[a.from].got++;
     if (s[a.to]) { s[a.to].asked++; if (a.solved) s[a.to].guessed++; }
   });
   return s;
@@ -448,7 +448,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
   let html = `<div class="reveal-card"><div class="reveal-name">🏆 得分</div>
     <table class="rank"><tr><th>名字</th><th class="c">套到</th><th class="c">猜中</th><th class="c">總分</th></tr>
     ${ranked.map(m => `<tr><td><b>${esc(m.name)}</b></td><td class="c">${sc[m.pid].got}</td><td class="c">${sc[m.pid].guessed}</td><td class="c"><b>${sc[m.pid].got + sc[m.pid].guessed}</b></td></tr>`).join('')}
-    </table><div class="soft" style="color:#8a7f76">套到一題 +1，猜中是誰套你的話 +1</div></div>`;
+    </table><div class="soft" style="color:#8a7f76">套到一題 +1（對方說不對的不算），猜中是誰套你的話 +1</div></div>`;
   members.forEach(m => {
     const from = Object.keys(config.rec || {}).find(k => config.rec[k] === m.pid);
     const meta = (recMeta || {})[from] || {};
@@ -458,9 +458,9 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf) {
       <div class="reveal-name">${esc(m.name)}</div>
       <div class="reveal-sub">🏮 推薦官 ${from ? esc(nameOf(from)) : '—'} 推薦給他</div>
       ${photo ? `<img class="rec-img" src="${photo}" alt="">` : ''}
-      ${meta.what || meta.why ? `<div class="template" style="margin-top:10px">推薦 <b>${esc(meta.what || '…')}</b>${meta.why ? `<br>因為他說過：${esc(meta.why)}` : ''}</div>` : (photo ? '' : '<div class="soft" style="color:#a0958b">（還沒上傳推薦）</div>')}
+      ${meta.what ? `<div class="template" style="margin-top:10px">推薦 <b>${esc(meta.what)}</b></div>` : (photo ? '' : '<div class="soft" style="color:#a0958b">（還沒上傳推薦）</div>')}
       <div class="reveal-sub">🤫 大家套到關於${esc(m.name)}的事</div>
-      ${about.length ? about.map(a => `<div class="mine-item"><b>${esc(nameOf(a.from))}</b> 問到「${esc(a.q)}」→ ${esc(a.a)}${a.solved ? '<span class="tag-ok">被猜中</span>' : ''}</div>`).join('') : '<div class="soft" style="color:#a0958b">沒有人套到他的話 😎</div>'}
+      ${about.length ? about.map(a => `<div class="mine-item"><b>${esc(nameOf(a.from))}</b> 問到「${esc(a.q)}」→ ${esc(a.a)}${a.verdict === 'no' ? '<span class="tag-wait">答案不對</span>' : ''}${a.solved ? '<span class="tag-ok">被猜中</span>' : ''}</div>`).join('') : '<div class="soft" style="color:#a0958b">沒有人套到他的話 😎</div>'}
     </div>`;
   });
   return html;
@@ -513,13 +513,14 @@ if (MODE === 'player') {
     function notify() {
       if (!pid) return;
       const now = {};
-      Object.entries(answers).forEach(([id, a]) => { if (a.to === pid) now['in_' + id] = 1; if (a.from === pid && a.solved) now['solved_' + id] = 1; });
+      Object.entries(answers).forEach(([id, a]) => { if (a.to === pid) now['in_' + id] = 1; if (a.from === pid && a.solved) now['solved_' + id] = 1; if (a.from === pid && a.verdict === 'no') now['no_' + id] = 1; });
       if (seen === null) { seen = now; lsSet(seenKey, seen); return; }
       Object.keys(now).forEach(k => {
         if (seen[k]) return;
         const id = k.split('_').slice(1).join('_'), a = answers[id];
         if (k.startsWith('in_')) toast('📬 有人套到你的話了！猜猜是誰？');
-        else toast(`😮 ${nameOf(a.to)} 猜到是你套他的話了！`);
+        else if (k.startsWith('solved_')) toast(`😮 ${nameOf(a.to)} 猜到是你套他的話了！`);
+        else toast(`🙈 ${nameOf(a.to)} 說你記的「${a.q}」答案不對，這題不算分`);
       });
       seen = now; lsSet(seenKey, seen);
     }
@@ -587,14 +588,17 @@ if (MODE === 'player') {
     window.guess = async function (aid) {
       const sel = document.getElementById('g_' + aid);
       const a = answers[aid];
-      if (!sel || !a || !sel.value) return;
-      if (sel.value === a.from) {
-        await be.set(`${R}/answers/${aid}/solved`, true);
-        toast(`🎉 猜中了！是 ${nameOf(a.from)} +1`);
-      } else {
-        await be.set(`${R}/answers/${aid}/wrong`, [...(a.wrong || []), sel.value]);
-        toast(`不是 ${nameOf(sel.value)}，再猜猜看`);
-      }
+      if (!sel || !a || a.guess || !sel.value) return;
+      if (!(await askConfirm(`只能猜一次，確定猜「${nameOf(sel.value)}」嗎？`, '確定'))) return;
+      const ok = sel.value === a.from;
+      await be.set(`${R}/answers/${aid}/guess`, sel.value);
+      if (ok) await be.set(`${R}/answers/${aid}/solved`, true);
+      toast(ok ? `🎉 猜中了！就是 ${nameOf(a.from)} +1` : '沒猜中，揭曉時就知道是誰了');
+    };
+    window.verdict = async function (aid, v) {
+      const a = answers[aid];
+      if (!a) return;
+      await be.set(`${R}/answers/${aid}/verdict`, v);
     };
     window.pickPhoto = async function (input) {
       const f = input.files && input.files[0];
@@ -609,13 +613,13 @@ if (MODE === 'player') {
     };
     window.saveRec = async function () {
       const what = document.getElementById('rec-what').value.trim().slice(0, 40);
-      const why = document.getElementById('rec-why').value.trim().slice(0, 80);
       if (!what && !pendingPhoto && !myPhoto) { toast('先拍一張照片或寫下推薦什麼'); return; }
       const st = document.getElementById('rec-status');
       st.textContent = '上傳中…';
       try {
         if (pendingPhoto) { await be.set(`${R}/recPhoto/${pid}`, pendingPhoto); pendingPhoto = null; }
-        await be.set(`${R}/recMeta/${pid}`, {what, why, photo: !!(myPhoto || pendingPhoto), t: Date.now()});
+        const hadPhoto = !!(myPhoto || pendingPhoto);
+        await be.set(`${R}/recMeta/${pid}`, {what, photo: hadPhoto, t: Date.now()});
         st.textContent = '✓ 已儲存，揭曉時大家會看到';
       } catch (e) { st.textContent = '上傳失敗，請再試一次'; }
     };
@@ -670,8 +674,8 @@ if (MODE === 'player') {
           <span class="phone-seal">🤫 請勿給別人看</span>
           <details class="howto"><summary>❓ 怎麼玩</summary><div class="body">
             <b>套話任務</b>：系統隨機給你一個對象和一題。聊天時繞個彎問出答案，不能用卡片上「不能直接問」的問法。問到後把答案打進來，會自動換下一題；不想問這題可以隨時「換一題」。<br>
-            <b>有人在套你的話</b>：別人記下你的答案時你會收到通知，但不知道是誰。猜中是誰 +1，猜錯不扣分可以再猜。<br>
-            <b>秘密推薦官</b>：幫你的推薦對象找一攤他可能會喜歡的，拍照上傳（不用買），最後揭曉時大家一起看。<br>
+            <b>有人在套你的話</b>：別人記下你的答案時你會收到通知，但不知道是誰。你可以按「答案對／不對」，不對的話對方那題不算分。每則通知可以猜一次是誰，猜中 +1；猜錯不扣分，揭曉時才知道是誰。<br>
+            <b>秘密推薦官</b>：幫你的推薦對象找一攤他可能會喜歡的，拍照上傳（不用買），寫下推薦什麼，最後揭曉時大家一起看。<br>
             套到一題 +1，猜中一次 +1。</div></details>
           <div class="stage s1"><div class="stage-head"><span class="stage-no">任務</span><span class="stage-title">🤫 套話任務</span></div>
             <div class="stage-body">
@@ -689,7 +693,6 @@ if (MODE === 'player') {
               <label class="upload-btn">📷 拍照或選一張照片<input type="file" accept="image/*" style="display:none" onchange="pickPhoto(this)"></label>
               <div id="rec-preview"></div>
               <input class="field" id="rec-what" placeholder="推薦什麼？（攤位或食物）" maxlength="40">
-              <input class="field" id="rec-why" placeholder="因為他說過…（可以不寫）" maxlength="80">
               <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="saveRec()">儲存推薦</button>
               <div class="soft" style="color:#8a7f76" id="rec-status"></div>
             </div></div>
@@ -719,27 +722,32 @@ if (MODE === 'player') {
         ${d.ban ? `<div class="ban">⛔ 不能直接問：${esc(d.ban)}</div>` : ''}` : '<div class="secret-label">抽題中…</div>';
       // 通知：有人套到我的話
       const mineIn = Object.entries(answers).filter(([, a]) => a.to === pid).sort((x, y) => y[1].t - x[1].t);
-      const sig = JSON.stringify(mineIn.map(([id, a]) => [id, a.solved, a.wrong])) + members().length;
+      const sig = JSON.stringify(mineIn.map(([id, a]) => [id, a.solved, a.guess, a.verdict])) + members().length;
       if (sig !== inboxSig) {
         inboxSig = sig;
-        const open = mineIn.filter(([, a]) => !a.solved).length;
+        const open = mineIn.filter(([, a]) => !a.guess).length;
         document.getElementById('inbox-count').textContent = mineIn.length ? `${open} 個待猜` : '';
         document.getElementById('inbox').innerHTML = mineIn.length ? mineIn.map(([id, a]) => {
-          const wrong = a.wrong || [];
-          const opts = members().filter(m => m.pid !== pid && !wrong.includes(m.pid)).map(m => `<option value="${m.pid}">${esc(m.name)}</option>`).join('');
-          return `<div class="inbox-item ${a.solved ? '' : 'new'}">
+          const opts = members().filter(m => m.pid !== pid).map(m => `<option value="${m.pid}">${esc(m.name)}</option>`).join('');
+          const vd = a.verdict === 'ok' ? '<span class="tag-ok">你說對</span>' : a.verdict === 'no' ? '<span class="tag-wait">你說不對</span>' : '';
+          const guessPart = a.guess
+            ? (a.solved ? `<div class="solved">✓ 你猜 ${esc(nameOf(a.guess))}，猜中了！+1</div>` : `<div class="wrong" style="font-size:14px">✗ 你猜 ${esc(nameOf(a.guess))}，沒猜中（揭曉時公布是誰）</div>`)
+            : `<div class="guess-row"><select id="g_${id}"><option value="">猜是誰套你的話（只能猜一次）</option>${opts}</select><button class="btn btn-primary btn-sm" onclick="guess('${id}')">猜</button></div>`;
+          return `<div class="inbox-item ${a.guess ? '' : 'new'}">
             <div class="inbox-q">有人記下了你的「${esc(a.q)}」</div>
-            <div class="inbox-a">${esc(a.a)}</div>
-            ${a.solved ? `<div class="solved">✓ 是 ${esc(nameOf(a.from))}！你猜中了 +1</div>` : `
-              <div class="guess-row"><select id="g_${id}"><option value="">猜是誰套你的話…</option>${opts}</select><button class="btn btn-primary btn-sm" onclick="guess('${id}')">猜</button></div>
-              ${wrong.length ? `<div class="wrong">不是：${wrong.map(w => esc(nameOf(w))).join('、')}</div>` : ''}`}
+            <div class="inbox-a">${esc(a.a)} ${vd}</div>
+            <div class="row-btns" style="margin:0 0 10px">
+              <button class="btn btn-sm ${a.verdict === 'ok' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','ok')">✓ 答案對</button>
+              <button class="btn btn-sm ${a.verdict === 'no' ? 'btn-primary' : 'btn-secondary'}" onclick="verdict('${id}','no')">✗ 不對</button>
+            </div>
+            ${guessPart}
           </div>`;
         }).join('') : '<div class="soft" style="color:#a0958b">還沒有人套到你的話。小心有人在套你！</div>';
       }
       // 我記下的答案
       const mine = Object.values(answers).filter(a => a.from === pid).sort((x, y) => y.t - x.t);
       document.getElementById('mine-sum').textContent = `📝 我記下的答案（${mine.length}）`;
-      document.getElementById('mine').innerHTML = mine.length ? mine.map(a => `<div class="mine-item"><b>${esc(nameOf(a.to))}</b>：${esc(a.q)} → ${esc(a.a)}${a.solved ? '<span class="tag-ok">被猜到了</span>' : '<span class="tag-wait">還沒被猜到</span>'}</div>`).join('') : '<div class="soft" style="color:#a0958b">還沒有</div>';
+      document.getElementById('mine').innerHTML = mine.length ? mine.map(a => `<div class="mine-item"><b>${esc(nameOf(a.to))}</b>：${esc(a.q)} → ${esc(a.a)}${a.verdict === 'ok' ? '<span class="tag-ok">對方說對</span>' : a.verdict === 'no' ? '<span class="tag-wait">對方說不對・不算分</span>' : ''}${a.solved ? '<span class="tag-ok">被猜到了</span>' : (a.guess ? '<span class="tag-ok">對方猜錯人</span>' : '<span class="tag-wait">還沒被猜</span>')}</div>`).join('') : '<div class="soft" style="color:#a0958b">還沒有</div>';
       updateRec();
     }
     function updateRec(first) {
@@ -753,9 +761,8 @@ if (MODE === 'player') {
       if (!pendingPhoto) document.getElementById('rec-preview').innerHTML = myPhoto ? `<img class="rec-img" src="${myPhoto}" alt="">` : '';
       const meta = recMeta[pid];
       if (meta && (first || !updateRec.filled)) {
-        const w = document.getElementById('rec-what'), y = document.getElementById('rec-why');
+        const w = document.getElementById('rec-what');
         if (!w.value) w.value = meta.what || '';
-        if (!y.value) y.value = meta.why || '';
         updateRec.filled = true;
         if (first) document.getElementById('rec-status').textContent = '✓ 已儲存過，可以再修改';
       }

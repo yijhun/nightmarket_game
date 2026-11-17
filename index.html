@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>夜市任務</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', 'Noto Sans TC', sans-serif; background: #f7f3ee; color: #1f1a17; min-height: 100vh; line-height: 1.6; }
+.container { max-width: 680px; margin: 0 auto; padding: 24px 16px 56px; }
+.header { text-align: center; margin-bottom: 24px; }
+.header h1 { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+.header p { font-size: 13px; color: #8a7f76; }
+.card { background: white; border-radius: 14px; padding: 18px; margin-bottom: 14px; border: 1px solid #ebe3da; }
+.card-title { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+input[type=text], select { border: 1.5px solid #ebe3da; border-radius: 8px; padding: 9px 12px; font-size: 14px; outline: none; font-family: inherit; background: white; }
+input[type=text] { flex: 1; min-width: 0; }
+input[type=text]:focus, select:focus { border-color: #C8442C; }
+.btn { border: none; border-radius: 8px; padding: 10px 16px; font-size: 14px; cursor: pointer; font-weight: 600; transition: all .15s; font-family: inherit; }
+.btn-primary { background: #C8442C; color: white; }
+.btn-primary:hover { background: #A3341F; }
+.btn-secondary { background: #f1ebe4; color: #4a403a; }
+.btn-secondary:hover { background: #e6ddd3; }
+.btn-full { width: 100%; padding: 13px; font-size: 15px; }
+.btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 6px; font-weight: 500; }
+.btn-icon { width: 28px; height: 28px; border-radius: 50%; border: none; background: #f7f3ee; color: #aaa; cursor: pointer; font-size: 14px; flex-shrink: 0; }
+.btn-icon:hover { background: #fce9e9; color: #c0392b; }
+.chip { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+.member-head, .member-item { display: grid; grid-template-columns: 1fr 64px 64px 28px; gap: 8px; align-items: center; }
+.member-head { font-size: 11px; color: #a0958b; padding-bottom: 6px; border-bottom: 1px solid #f1ebe4; }
+.member-item { padding: 8px 0; border-bottom: 1px solid #f7f3ee; }
+.member-item:last-child { border-bottom: none; }
+.member-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-item select { padding: 5px 6px; font-size: 13px; }
+.empty-hint { text-align: center; padding: 26px 16px; color: #aaa; font-size: 13px; }
+.empty-hint .icon { font-size: 28px; margin-bottom: 6px; }
+.warning { background: #FDF0D8; border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #855A0B; margin-bottom: 10px; line-height: 1.7; display: none; }
+.ok-note { background: #E7F4EC; border-radius: 8px; padding: 9px 13px; font-size: 12px; color: #1E6B42; margin-bottom: 10px; line-height: 1.7; }
+.tool-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: #6b615a; }
+.name-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.name-tab { padding: 7px 14px; border-radius: 20px; border: 1.5px solid #ebe3da; font-size: 13px; cursor: pointer; background: white; color: #4a403a; }
+.name-tab:hover { border-color: #C8442C; }
+.name-tab.active { background: #C8442C; border-color: #C8442C; color: white; }
+.rule-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid #f7f3ee; }
+.rule-row:last-child { border-bottom: none; }
+.pts { color: #C8442C; font-weight: 700; white-space: nowrap; }
+.hint { font-size: 12px; color: #a0958b; margin-top: 10px; line-height: 1.7; }
+.actions { display: flex; gap: 8px; margin-top: 14px; }
+.actions .btn { flex: 1; }
+table.ov { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.ov th, table.ov td { text-align: left; padding: 6px 6px; border-bottom: 1px solid #f1ebe4; vertical-align: top; }
+table.ov th { color: #a0958b; font-weight: 600; font-size: 11px; }
+.pw { display: inline-block; background: #1f1a17; color: #FFD27A; font-weight: 700; padding: 3px 10px; border-radius: 6px; margin: 2px 4px 2px 0; font-size: 13px; }
+.g-A { background: #FCE4DE; color: #A3341F; } .g-B { background: #DDEBFA; color: #1D5A9A; } .g-C { background: #E3F2E1; color: #2F6A2A; }
+
+/* QR */
+.qr-card { background: white; border-radius: 14px; border: 1px solid #ebe3da; padding: 20px; margin-bottom: 14px; }
+.qr-name { font-size: 17px; font-weight: 700; margin-bottom: 2px; }
+.qr-sub { font-size: 12px; color: #8a7f76; margin-bottom: 16px; }
+.qr-box { display: flex; justify-content: center; margin-bottom: 14px; }
+.qr-box canvas, .qr-box img { border-radius: 8px; }
+.qr-note { font-size: 12px; color: #8a7f76; text-align: center; line-height: 1.7; margin-bottom: 14px; }
+.copy-btn, .toggle-btn { width: 100%; padding: 11px; border: 1.5px solid #ebe3da; border-radius: 10px; background: #f7f3ee; font-size: 13px; cursor: pointer; color: #4a403a; font-family: inherit; }
+.copy-btn.done { background: #E7F4EC; border-color: #A8D9BC; color: #1E6B42; }
+.toggle-btn { margin-top: 10px; border-style: dashed; background: #fcfaf7; color: #8a7f76; }
+.toggle-btn.open { background: #FDF0D8; border-color: #F2C77A; color: #855A0B; }
+.text-area { display: none; margin-top: 12px; }
+.text-area.open { display: block; }
+
+/* 任務卡（手機與主控文字版共用） */
+.phone-wrap { max-width: 480px; margin: 0 auto; padding: 16px 16px 48px; }
+.phone-header { text-align: center; padding: 22px 0 14px; }
+.phone-icon { font-size: 36px; margin-bottom: 4px; }
+.phone-name { font-size: 24px; font-weight: 800; }
+.phone-sub { font-size: 13px; color: #8a7f76; }
+.phone-seal { display: block; width: fit-content; margin: 8px auto 18px; background: #FDF0D8; color: #855A0B; font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 20px; }
+.stage { background: white; border: 1.5px solid #ebe3da; border-radius: 16px; margin-bottom: 16px; overflow: hidden; }
+.stage-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+.stage-no { font-size: 11px; font-weight: 800; letter-spacing: .08em; color: white; padding: 3px 9px; border-radius: 20px; }
+.stage-title { font-size: 16px; font-weight: 700; flex: 1; }
+.stage-time { font-size: 11px; color: #a0958b; }
+.stage-body { padding: 0 16px 16px; }
+.s1 .stage-no { background: #C8442C; } .s1 { border-color: #F2B8AA; }
+.s2 .stage-no { background: #D98B1E; } .s2 { border-color: #F2D29A; }
+.s3 .stage-no { background: #2F7D5B; } .s3 { border-color: #A8D9BC; }
+.rule { font-size: 13px; color: #6b615a; background: #faf7f3; border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; line-height: 1.7; }
+.sub-title { font-size: 12px; font-weight: 700; color: #8a7f76; margin: 14px 0 8px; display: flex; align-items: center; gap: 8px; }
+.sub-title::after { content: ''; flex: 1; height: 1px; background: #f1ebe4; }
+.mates { display: flex; flex-wrap: wrap; gap: 6px; }
+.mate { font-size: 13px; padding: 4px 11px; border-radius: 20px; background: #f7f3ee; }
+.mate.me { background: #1f1a17; color: white; }
+.open-q { font-size: 14px; padding: 7px 0; border-bottom: 1px dashed #f1ebe4; display: flex; gap: 8px; }
+.open-q:last-child { border-bottom: none; }
+.open-q b { color: #C8442C; }
+.secret { background: #1f1a17; color: #f7f3ee; border-radius: 12px; padding: 14px; }
+.secret-label { font-size: 11px; color: #FFD27A; font-weight: 700; letter-spacing: .06em; }
+.secret-target { font-size: 22px; font-weight: 800; margin: 2px 0 10px; }
+.secret-q { font-size: 14px; padding: 6px 0; border-top: 1px solid #3a322d; display: flex; gap: 8px; }
+.secret-q .tag { font-size: 10px; color: #1f1a17; background: #FFD27A; border-radius: 4px; padding: 1px 5px; height: fit-content; margin-top: 3px; white-space: nowrap; }
+.ban { font-size: 12px; color: #FFB4A3; margin-top: 8px; line-height: 1.7; }
+.soft { font-size: 12px; color: #b9ada3; margin-top: 6px; line-height: 1.6; }
+.rec { background: #FFF6E5; border: 1.5px solid #F2D29A; border-radius: 12px; padding: 14px; }
+.rec-target { font-size: 22px; font-weight: 800; color: #6B4300; margin: 2px 0 8px; }
+.rec li { font-size: 14px; margin: 4px 0 4px 18px; }
+.alert { font-size: 12px; background: #FCE4DE; color: #A3341F; border-radius: 8px; padding: 7px 10px; margin-top: 10px; }
+.template { background: #E7F4EC; border-radius: 12px; padding: 14px; font-size: 15px; line-height: 1.9; color: #1E4D37; }
+.template u { text-decoration: none; border-bottom: 2px solid #2F7D5B; padding: 0 18px; }
+.verse { background: white; border: 1.5px solid #A8D9BC; border-radius: 12px; padding: 14px; margin-top: 10px; }
+.verse-q { font-size: 15px; line-height: 1.9; }
+.verse-r { font-size: 12px; color: #2F7D5B; font-weight: 700; margin-top: 4px; }
+.lock { text-align: center; padding: 18px 16px 20px; }
+.lock-icon { font-size: 26px; }
+.lock-text { font-size: 13px; color: #8a7f76; margin: 4px 0 12px; }
+.lock-row { display: flex; gap: 8px; max-width: 300px; margin: 0 auto; }
+.lock-err { font-size: 12px; color: #c0392b; margin-top: 8px; min-height: 18px; }
+.phone-footer { text-align: center; padding: 18px 0 8px; font-size: 12px; color: #c2b8ae; }
+
+/* ── 後端版新增 ── */
+.mode-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; display: inline-block; margin-top: 6px; }
+.mode-fb { background: #E7F4EC; color: #1E6B42; }
+.mode-mock { background: #FDF0D8; color: #855A0B; }
+.join-link { font-size: 12px; color: #8a7f76; word-break: break-all; text-align: center; margin-bottom: 10px; }
+.badge-new { font-size: 10px; background: #FCE4DE; color: #A3341F; padding: 1px 6px; border-radius: 10px; margin-left: 6px; font-weight: 600; }
+.badge-manual { font-size: 10px; background: #f1ebe4; color: #8a7f76; padding: 1px 6px; border-radius: 10px; margin-left: 6px; }
+.steps { display: flex; gap: 4px; margin-bottom: 12px; }
+.step-pill { flex: 1; text-align: center; font-size: 11px; padding: 7px 2px; border-radius: 8px; background: #f7f3ee; color: #a0958b; line-height: 1.4; }
+.step-pill.done { background: #f1ebe4; color: #6b615a; }
+.step-pill.now { background: #C8442C; color: white; font-weight: 700; }
+.big-input { font-size: 18px !important; padding: 13px 14px !important; text-align: center; width: 100%; }
+.wait { text-align: center; padding: 40px 10px 20px; }
+.wait-icon { font-size: 44px; animation: bob 2s ease-in-out infinite; }
+@keyframes bob { 50% { transform: translateY(-6px); } }
+.wait-title { font-size: 18px; font-weight: 700; margin-top: 8px; }
+.wait-sub { font-size: 13px; color: #8a7f76; margin-top: 4px; }
+.joined-list { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 18px; }
+details.past { background: white; border: 1px solid #ebe3da; border-radius: 12px; margin-bottom: 10px; }
+details.past summary { padding: 11px 14px; font-size: 13px; color: #8a7f76; cursor: pointer; }
+details.past .stage { border: none; margin: 0; }
+.now-banner { text-align: center; font-size: 12px; color: #C8442C; font-weight: 700; margin: 4px 0 8px; }
+.link-btn { background: none; border: none; color: #a0958b; font-size: 12px; text-decoration: underline; cursor: pointer; margin-top: 14px; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<!-- ════════ 主持人 ════════ -->
+<div id="admin-ui" style="display:none">
+  <div class="container">
+    <div class="header">
+      <h1>🏮 夜市任務・主持人</h1>
+      <p>梅竹團契・後站夜市</p>
+      <span id="mode-badge" class="mode-badge"></span>
+    </div>
+
+    <!-- 房間 -->
+    <div class="card" id="room-card">
+      <div class="card-title">① 開房間</div>
+      <div class="input-row">
+        <input type="text" id="room-input" placeholder="房間代碼（英數字）" maxlength="20">
+        <button class="btn btn-primary" onclick="openRoom()">開房間</button>
+      </div>
+      <div class="hint" style="margin-top:0">同一個代碼就是同一場活動。重新整理頁面或換電腦，輸入同一個代碼就能接回來。</div>
+    </div>
+
+    <div id="room-area" style="display:none">
+      <div class="card">
+        <div class="card-title">
+          ② 讓大家掃這個加入
+          <span id="room-chip" class="chip" style="background:#1f1a17;color:#FFD27A;"></span>
+          <button class="btn-sm" style="margin-left:auto;border:1px solid #ebe3da;background:white;color:#8a7f76;cursor:pointer;" onclick="leaveRoom()">換房間</button>
+        </div>
+        <div class="qr-box" id="join-qr"></div>
+        <div class="join-link" id="join-link"></div>
+        <button class="copy-btn" id="copy-join" onclick="copyJoin()">🔗 複製加入連結（貼到 LINE 群組）</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">③ 已加入 <span id="count-chip" class="chip" style="background:#f1ebe4;color:#4a403a;"></span></div>
+        <div class="tool-row">
+          組數
+          <select id="group-count" onchange="setGroupCount(this.value)">
+            <option value="2">2 組</option>
+            <option value="3">3 組</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="autoGroup()">🎲 自動分組</button>
+        </div>
+        <div id="member-list"></div>
+        <div class="input-row" style="margin-top:10px">
+          <input type="text" id="manual-input" placeholder="沒有手機的人，由主持人代為新增" maxlength="10">
+          <button class="btn btn-secondary" onclick="addManual()">新增</button>
+        </div>
+        <div class="hint">💡 建議把比較內向的人和比較熱情的人排在同一組，第二輪每組大約換一半的人。</div>
+        <div class="warning" id="warn-msg"></div>
+        <button class="btn btn-primary btn-full" style="margin-top:6px" onclick="generate()" id="gen-btn">✨ 分配任務並開始第一關</button>
+      </div>
+
+      <div class="card" id="control-card" style="display:none">
+        <div class="card-title">④ 活動進行中</div>
+        <div class="steps" id="steps"></div>
+        <div class="actions" style="margin-top:0">
+          <button class="btn btn-secondary" onclick="moveStage(-1)">← 上一步</button>
+          <button class="btn btn-primary" id="next-btn" onclick="moveStage(1)"></button>
+        </div>
+        <div class="hint">按「下一步」，所有人的手機會同時跳到下一關，不用輸入密碼。</div>
+        <button class="toggle-btn" id="ov-btn" onclick="toggleOverview()">👁️ 展開主持人總覽（不要給別人看）</button>
+        <div class="text-area" id="ov-area"></div>
+      </div>
+
+      <div class="card" id="cards-card" style="display:none">
+        <div class="card-title">個人任務卡（備用）</div>
+        <div style="font-size:12px;color:#8a7f76;margin-bottom:10px;">有人手機連不上時用：可以直接念給他聽，或給他備用連結（不需要網路同步，會顯示全部關卡）</div>
+        <div class="name-tabs" id="name-tabs"></div>
+        <div id="card-display" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ 玩家 ════════ -->
+<div id="phone-ui" style="display:none"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  Firebase 設定：把 Firebase 主控台給你的 firebaseConfig 貼在這裡
+//  （留 null 的話會進入「示範模式」，資料只存在同一台電腦的瀏覽器）
+// ════════════════════════════════════════════════════════════════════
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD--f_HQwCf5XvyOVX5D-75-fb5exYLBv4",
+  authDomain: "meizhu-nightmarket.firebaseapp.com",
+  databaseURL: "https://meizhu-nightmarket-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "meizhu-nightmarket",
+  storageBucket: "meizhu-nightmarket.firebasestorage.app",
+  messagingSenderId: "269211922932",
+  appId: "1:269211922932:web:292ccb4f77ce0499c009a1"
+};
+
+// CORE-START ════════════════════════════════════════════════════════════
+// ── 題庫：公開聊天題（可以直接問）──────────────────────────────────────
+const OPEN_Q = [
+  '這攤你吃過嗎？推薦嗎？',
+  '你逛夜市一定會買的是什麼？',
+  '小時候最常去哪個夜市？',
+  '夜市遊戲你最擅長哪一種？',
+  '如果只能吃一種夜市小吃一輩子，你選什麼？',
+  '你是會排隊名店的人，還是隨便挑一攤的人？',
+  '你吃過最奇怪的夜市食物是什麼？',
+  '逛夜市你是先吃鹹的還是先吃甜的？',
+  '最近一件讓你開心的小事？',
+  '這禮拜最累的是什麼事？',
+  '你放鬆的方式是什麼？',
+  '最近有什麼想嘗試、但還沒做的事？',
+  '如果明天突然放假一天，你會做什麼？',
+  '最近有沒有一首歌一直在聽？',
+  '你覺得自己是夜貓子還是早起的人？',
+  '來新竹之後最喜歡的一個地方？',
+];
+// ── 題庫：秘密題・口味（第二關推薦時會用到）────────────────────────────
+const FOOD_Q = [
+  {q:'吃不吃辣、能吃多辣', ban:'你吃辣嗎？'},
+  {q:'是甜食派還是鹹食派', ban:'你喜歡甜的還是鹹的？'},
+  {q:'最不敢吃或最討厭的一種食物', ban:'你有什麼不吃的？'},
+  {q:'小時候最常吃的一種點心或零食', ban:'你小時候喜歡吃什麼？'},
+  {q:'最近最想吃、但一直沒吃到的東西', ban:'你最近想吃什麼？'},
+  {q:'喝飲料通常點幾分糖、什麼冰塊', ban:'你喝飲料幾分糖？'},
+  {q:'炸的、烤的、湯的，最喜歡哪一種', ban:'你喜歡吃炸的嗎？'},
+  {q:'有沒有一種食物會讓他想到家或某個人', ban:'你有懷念的味道嗎？'},
+  {q:'吃東西是喜歡嘗鮮，還是都點同一樣', ban:'你喜歡嘗試新東西嗎？'},
+  {q:'最喜歡的一種水果', ban:'你喜歡什麼水果？'},
+  {q:'早餐通常吃什麼', ban:'你早餐吃什麼？'},
+  {q:'宵夜最常吃什麼', ban:'你吃宵夜嗎？吃什麼？'},
+];
+// ── 題庫：秘密題・生活（沿用上次 LQ 並挑選較輕鬆的）──────────────────
+const LIFE_Q = [
+  {q:'有什麼很少人知道的興趣或技能', ban:'你有什麼興趣？'},
+  {q:'最近在學或嘗試的一件新事物', ban:'你最近在學什麼？'},
+  {q:'曾經去過印象最深的一個地方', ban:'你去過最遠哪裡？'},
+  {q:'最近最期待的一件事，不管大小', ban:'你在期待什麼？'},
+  {q:'有什麼特別怕的東西', ban:'你最怕什麼？'},
+  {q:'如果突然多一天假，會做什麼', ban:'你放假喜歡做什麼？'},
+  {q:'覺得自己最像哪一種動物，以及理由', ban:'你像什麼動物？'},
+  {q:'當初怎樣來到團契的', ban:'你是怎麼加入的？'},
+  {q:'最近一次笑到停不下來是因為什麼事', ban:'你最近有什麼好笑的事？'},
+  {q:'壓力很大時，最常用什麼方式讓自己緩下來', ban:'你怎麼紓壓？'},
+  {q:'有沒有一個季節特別讓自己覺得舒服', ban:'你最喜歡哪個季節？'},
+  {q:'和朋友相處時，比較常扮演什麼角色', ban:'你在朋友圈是什麼角色？'},
+  {q:'有沒有一件以前很排斥、後來反而喜歡上的事', ban:'你有沒有改觀過什麼事？'},
+  {q:'有沒有一首歌每次聽都會想到某段時期', ban:'你最喜歡哪首歌？'},
+  {q:'一個理想中的普通日子會怎麼過', ban:'你理想的一天是什麼？'},
+  {q:'最近有沒有重新撿回來的一件事', ban:'你最近有重拾什麼嗎？'},
+  {q:'小時候很相信、現在想起來很好笑的一件事', ban:'你小時候有沒有很天真的想法？'},
+  {q:'最近有沒有一件小事讓他覺得被鼓勵', ban:'最近有誰鼓勵你嗎？'},
+  {q:'最近感謝神的一件小事', ban:'你最近感謝神什麼？'},
+  {q:'有沒有一首詩歌在某段時間特別陪伴他', ban:'你最喜歡哪首詩歌？'},
+];
+// ── 經文（和合本，沿用上次並加上夜市主題）─────────────────────────────
+const VERSES = [
+  {text:'你們要嘗嘗主恩的滋味，便知道他是美善；投靠他的人有福了！', ref:'詩篇 34:8'},
+  {text:'我靠著那加給我力量的，凡事都能做。', ref:'腓立比書 4:13'},
+  {text:'耶和華是我的牧者，我必不至缺乏。', ref:'詩篇 23:1'},
+  {text:'我們曉得萬事都互相效力，叫愛神的人得益處。', ref:'羅馬書 8:28'},
+  {text:'但那等候耶和華的必從新得力。他們必如鷹展翅上騰。', ref:'以賽亞書 40:31'},
+  {text:'凡勞苦擔重擔的人可以到我這裡來，我就使你們得安息。', ref:'馬太福音 11:28'},
+  {text:'神是我們的避難所，是我們的力量，是我們在患難中隨時的幫助。', ref:'詩篇 46:1'},
+  {text:'你們要將一切的憂慮卸給神，因為他顧念你們。', ref:'彼得前書 5:7'},
+  {text:'應當一無掛慮，只要凡事藉著禱告、祈求，和感謝，將你們所要的告訴神。', ref:'腓立比書 4:6'},
+  {text:'你要專心仰賴耶和華，不可倚靠自己的聰明。', ref:'箴言 3:5'},
+  {text:'所以，你們要彼此接納，如同基督接納你們一樣，使榮耀歸與神。', ref:'羅馬書 15:7'},
+  {text:'凡事謙虛、溫柔、忍耐，用愛心互相寬容。', ref:'以弗所書 4:2'},
+  {text:'你的話是我腳前的燈，是我路上的光。', ref:'詩篇 119:105'},
+  {text:'你不要害怕，因為我與你同在；不要驚惶，因為我是你的神。', ref:'以賽亞書 41:10'},
+  {text:'你們親近神，神就必親近你們。', ref:'雅各書 4:8'},
+  {text:'喜樂的心乃是良藥。', ref:'箴言 17:22'},
+  {text:'要常常喜樂，不住的禱告，凡事謝恩。', ref:'帖撒羅尼迦前書 5:16-18'},
+  {text:'人心籌算自己的道路；惟耶和華指引他的腳步。', ref:'箴言 16:9'},
+  {text:'我的恩典夠你用的，因為我的能力是在人的軟弱上顯得完全。', ref:'哥林多後書 12:9'},
+  {text:'如今常存的有信，有望，有愛這三樣，其中最大的是愛。', ref:'哥林多前書 13:13'},
+  {text:'在指望中要喜樂，在患難中要忍耐，禱告要恆切。', ref:'羅馬書 12:12'},
+  {text:'你們要休息，要知道我是神！', ref:'詩篇 46:10'},
+  {text:'你們要彼此相愛，像我愛你們一樣；這就是我的命令。', ref:'約翰福音 15:12'},
+  {text:'看哪，弟兄和睦同居是何等地善，何等地美！', ref:'詩篇 133:1'},
+];
+// ── 解鎖密碼詞 ───────────────────────────────────────────────────────
+const PASSWORDS = ['章魚燒','椒麻雞','蛤蜊','蔥油餅','地瓜球','糖葫蘆','雞蛋糕','臭豆腐','烤玉米','大腸包小腸','鹽酥雞','珍珠奶茶'];
+const GROUP_NAMES = ['A','B','C'];
+
+// ── 種子亂數 ─────────────────────────────────────────────────────────
+let seededRandom = Math.random;
+function mulberry32(a) {
+  return function() {
+    let t = a += 0x6D2B79F5;
+    t = Math.imul(t ^ t >>> 15, t | 1);
+    t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function setSeed(val) {
+  if (!val) { seededRandom = Math.random; return; }
+  let hash = 0;
+  for (let i = 0; i < val.length; i++) { hash = ((hash << 5) - hash) + val.charCodeAt(i); hash |= 0; }
+  seededRandom = mulberry32(hash);
+}
+function shuffle(a) {
+  const b = [...a];
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(seededRandom() * (i + 1));
+    [b[i], b[j]] = [b[j], b[i]];
+  }
+  return b;
+}
+function groupsOf(members, key) {
+  const g = {};
+  members.forEach(m => { (g[m[key]] = g[m[key]] || []).push(m.id); });
+  return g;
+}
+
+// ── 自動分組：第一輪隨機平均分，第二輪每組約一半的人移到下一組 ─────────
+function autoAssignGroups(members, nGroups) {
+  const ids = shuffle(members.map(m => m.id));
+  const g1 = {}, g2 = {};
+  const buckets = Array.from({length: nGroups}, () => []);
+  ids.forEach((id, i) => buckets[i % nGroups].push(id));
+  buckets.forEach((b, gi) => {
+    const movers = new Set(shuffle(b).slice(0, Math.floor(b.length / 2)));
+    b.forEach(id => {
+      g1[id] = GROUP_NAMES[gi];
+      g2[id] = GROUP_NAMES[movers.has(id) ? (gi + 1) % nGroups : gi];
+    });
+  });
+  return members.map(m => ({...m, g1: g1[m.id], g2: g2[m.id]}));
+}
+
+// ── 小組內的秘密目標：每組排成一個圈，每人套下一位的話 ─────────────────
+function ringTargets(group, avoid) {
+  let best = null, bestBad = Infinity;
+  for (let t = 0; t < 30; t++) {
+    const order = shuffle(group);
+    const map = {};
+    order.forEach((id, i) => { map[id] = order[(i + 1) % order.length]; });
+    const bad = avoid ? order.filter(id => avoid[id] === map[id]).length : 0;
+    if (bad < bestBad) { best = map; bestBad = bad; }
+    if (bad === 0) break;
+  }
+  return best;
+}
+
+// ── 第二關推薦對象：每人推薦一人、每人被推薦一次 ─────────────────────
+// 優先：第一輪同組、但第二輪不同組（逛的時候不會被發現）
+// 其次：曾經同組過
+function assignRecommend(members) {
+  const ids = members.map(m => m.id);
+  const byId = Object.fromEntries(members.map(m => [m.id, m]));
+  const score = (a, b) => {
+    if (a === b) return -1;
+    const A = byId[a], B = byId[b];
+    if (A.g1 === B.g1 && A.g2 !== B.g2) return 3;
+    if (A.g1 === B.g1 || A.g2 === B.g2) return 1;
+    return 0;
+  };
+  let best = null, bestScore = -Infinity;
+  for (let t = 0; t < 400; t++) {
+    const order = shuffle(ids);
+    const taken = new Set();
+    const map = {};
+    let total = 0, ok = true;
+    for (const a of order) {
+      const cands = shuffle(ids.filter(b => b !== a && !taken.has(b)));
+      if (!cands.length) { ok = false; break; }
+      cands.sort((x, y) => score(a, y) - score(a, x));
+      map[a] = cands[0]; taken.add(cands[0]); total += score(a, cands[0]);
+    }
+    if (ok && total > bestScore) { best = map; bestScore = total; }
+    if (ok && bestScore === ids.length * 3) break;
+  }
+  return best;
+}
+
+function pickQ(bank, used, n) {
+  const avail = bank.map((q, i) => ({q, i})).filter(x => !used.includes(x.i));
+  const pick = shuffle(avail.length >= n ? avail : bank.map((q, i) => ({q, i}))).slice(0, n);
+  pick.forEach(x => used.push(x.i));
+  return pick.map(x => x.q);
+}
+
+// ── 主計算（主控端與手機端共用，同一個 seed 結果完全相同）───────────────
+function buildAll(members, seed) {
+  setSeed(seed);
+  const R = {rounds: [{}, {}], recommend: {}, verse: {}, passwords: []};
+  const usedFood = {}, usedLife = {};
+  members.forEach(m => { usedFood[m.id] = []; usedLife[m.id] = []; });
+
+  let prev = null;
+  ['g1', 'g2'].forEach((key, ri) => {
+    const groups = groupsOf(members, key);
+    const targetMap = {};
+    Object.keys(groups).sort().forEach(g => {
+      const grp = groups[g];
+      if (grp.length < 2) return;
+      Object.assign(targetMap, ringTargets(grp, prev));
+    });
+    members.forEach(m => {
+      const tid = targetMap[m.id] || null;
+      R.rounds[ri][m.id] = {
+        group: m[key],
+        mates: groups[m[key]],
+        target: tid,
+        secret: tid ? [
+          {...pickQ(FOOD_Q, usedFood[tid], 1)[0], kind: '口味'},
+          {...pickQ(LIFE_Q, usedLife[tid], 1)[0], kind: '生活'},
+        ] : [],
+        open: shuffle(OPEN_Q).slice(0, 3),
+      };
+    });
+    prev = targetMap;
+  });
+
+  R.recommend = assignRecommend(members) || {};
+  const vs = shuffle(VERSES);
+  members.forEach((m, i) => { R.verse[m.id] = vs[i % vs.length]; });
+  R.passwords = shuffle(PASSWORDS).slice(0, 3);
+  return R;
+}
+
+function checkSetup(members) {
+  const issues = [];
+  if (members.length < 4) issues.push('至少需要 4 位成員。');
+  ['g1', 'g2'].forEach((key, ri) => {
+    const g = groupsOf(members, key);
+    Object.keys(g).forEach(name => {
+      if (g[name].length < 2) issues.push(`第${ri ? '二' : '一'}輪 ${name} 組只有 1 個人，至少要 2 人。`);
+    });
+  });
+  return issues;
+}
+// CORE-END ══════════════════════════════════════════════════════════════
+
+
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── 任務卡 HTML（手機與主控文字版共用）────────────────────────────────
+function nameOf(members, id) { const m = members.find(x => x.id === id); return m ? esc(m.name) : '—'; }
+
+function roundHTML(members, R, id, ri) {
+  const r = R.rounds[ri][id];
+  const mates = r.mates.map(mid => `<span class="mate ${mid === id ? 'me' : ''}">${nameOf(members, mid)}</span>`).join('');
+  const open = r.open.map((q, i) => `<div class="open-q"><b>${i + 1}</b><span>${esc(q)}</span></div>`).join('');
+  const secret = r.target ? `
+    <div class="secret">
+      <div class="secret-label">🤫 秘密任務・你的目標</div>
+      <div class="secret-target">${nameOf(members, r.target)}</div>
+      ${r.secret.map(s => `<div class="secret-q"><span class="tag">${s.kind}</span><span>想辦法知道：${esc(s.q)}</span></div>`).join('')}
+      <div class="ban">⛔ 不能直接問：${r.secret.map(s => esc(s.ban)).join('・')}</div>
+      <div class="soft">被發現也沒關係，笑一笑繼續聊就好。每套到一題 +1。</div>
+    </div>` : '<div class="rule">這輪你的組只有你一個人，請找主持人。</div>';
+  return `
+    <div class="rule">跟組員一起挑一攤排隊。冷場時用下面的聊天題，順便完成秘密任務。主持人在 LINE 宣布才換輪。</div>
+    <div class="sub-title">👥 ${esc(r.group)} 組組員</div>
+    <div class="mates">${mates}</div>
+    <div class="sub-title">🗣️ 聊天題（可以直接問）</div>
+    ${open}
+    <div class="sub-title">🤫 秘密任務</div>
+    ${secret}`;
+}
+
+function stage2HTML(members, R, id) {
+  const tid = R.recommend[id];
+  const me = members.find(m => m.id === id), t = members.find(m => m.id === tid);
+  const sameGroup = me && t && me.g2 === t.g2;
+  return `
+    <div class="rule">跟第二輪的組員一起繼續逛，邊逛邊偷偷完成任務，不用花錢。</div>
+    <div class="rec">
+      <div class="secret-label" style="color:#B36B00">🏮 你要幫他找攤位</div>
+      <div class="rec-target">${nameOf(members, tid)}</div>
+      <ul>
+        <li>找一攤你覺得 <b>${nameOf(members, tid)}</b> 會喜歡的，<b>拍照</b>（不用買）</li>
+        <li>想想第一關聊到的：他吃不吃辣？喜歡甜的還是鹹的？</li>
+        <li>加分：再拍一張「讓你想到他」的照片</li>
+      </ul>
+      ${sameGroup ? `<div class="alert">⚠️ ${nameOf(members, tid)} 跟你同組，拍照時要更小心不要被發現！</div>` : ''}
+    </div>`;
+}
+
+function stage3HTML(members, R, id) {
+  const tid = R.recommend[id];
+  const v = R.verse[id];
+  const tn = nameOf(members, tid);
+  return `
+    <div class="rule">移到夜市外面比較安靜的地方，輪流分享。照著句型念就好，不用想很多。</div>
+    <div class="sub-title">🎤 推薦句型</div>
+    <div class="template">「我推薦 <b>${tn}</b> 去吃 <u></u>，<br>因為他說過 <u></u>。」<br><span style="font-size:13px">然後秀出你拍的照片 📸</span></div>
+    <div class="soft" style="color:#6b615a">• 輪到你被推薦時：猜猜誰是你的推薦官（猜中 +1），再給推薦打 1–3 顆星<br>• 也可以順便揭曉：第一關你的秘密目標是誰、套到了什麼</div>
+    <div class="sub-title">📖 最後：送給 ${tn} 的經文</div>
+    <div class="verse">
+      <div class="verse-q">「${esc(v.text)}」</div>
+      <div class="verse-r">${esc(v.ref)}</div>
+    </div>
+    <div class="soft" style="color:#6b615a">念給 ${tn} 聽，然後大家一起禱告結束 🙏</div>`;
+}
+
+const STAGES = [
+  {cls: 's1', no: '第一關', title: '排隊小組・第一輪', time: '15 分', body: (m, R, id) => roundHTML(m, R, id, 0)},
+  {cls: 's1', no: '第一關', title: '排隊小組・第二輪', time: '15 分', body: (m, R, id) => roundHTML(m, R, id, 1)},
+  {cls: 's2', no: '第二關', title: '秘密推薦官', time: '20 分', body: stage2HTML},
+  {cls: 's3', no: '第三關', title: '推薦分享＋經文祝福', time: '30 分', body: stage3HTML},
+];
+
+function stageShell(st, inner) {
+  return `<div class="stage ${st.cls}">
+    <div class="stage-head"><span class="stage-no">${st.no}</span><span class="stage-title">${st.title}</span><span class="stage-time">${st.time}</span></div>
+    <div class="stage-body">${inner}</div>
+  </div>`;
+}
+
+
+// ── 後端：Firebase 或示範模式 ─────────────────────────────────────────
+async function makeBackend() {
+  if (FIREBASE_CONFIG) {
+    const {initializeApp} = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+    const fdb = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js');
+    const db = fdb.getDatabase(initializeApp(FIREBASE_CONFIG));
+    return {
+      mode: 'firebase',
+      listen: (p, cb) => fdb.onValue(fdb.ref(db, p), snap => cb(snap.val())),
+      set: (p, v) => fdb.set(fdb.ref(db, p), v),
+      remove: p => fdb.remove(fdb.ref(db, p)),
+    };
+  }
+  const K = 'nm_mockdb';
+  const read = () => { try { return JSON.parse(localStorage.getItem(K) || '{}'); } catch (e) { return {}; } };
+  const get = (t, p) => p.split('/').filter(Boolean).reduce((o, k) => (o == null ? undefined : o[k]), t);
+  const listeners = [];
+  const fire = () => { const t = read(); listeners.forEach(([p, cb]) => { const v = get(t, p); cb(v === undefined ? null : JSON.parse(JSON.stringify(v))); }); };
+  window.addEventListener('storage', e => { if (e.key === K) fire(); });
+  const write = (p, v) => {
+    const t = read(), ks = p.split('/').filter(Boolean);
+    let o = t;
+    ks.slice(0, -1).forEach(k => { if (typeof o[k] !== 'object' || o[k] === null) o[k] = {}; o = o[k]; });
+    if (v === null) delete o[ks[ks.length - 1]]; else o[ks[ks.length - 1]] = JSON.parse(JSON.stringify(v));
+    localStorage.setItem(K, JSON.stringify(t));
+    fire();
+    return Promise.resolve();
+  };
+  return {
+    mode: 'mock',
+    listen: (p, cb) => { listeners.push([p, cb]); const v = get(read(), p); cb(v === undefined ? null : JSON.parse(JSON.stringify(v))); },
+    set: write,
+    remove: p => write(p, null),
+  };
+}
+
+const STAGE_LABELS = ['等待加入', '第一關・第一輪', '第一關・第二輪', '第二關', '第三關'];
+const NEXT_LABELS = ['', '換第二輪 →', '開始第二關 →', '開始第三關 →', '活動結束'];
+const cleanRoom = s => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '');
+const rid = () => Math.random().toString(36).slice(2, 10);
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+function baseURL() { return location.href.split('?')[0].split('#')[0]; }
+function makeQR(el, text, size) {
+  el.innerHTML = '';
+  try { new QRCode(el, {text, width: size, height: size, colorDark: '#1f1a17', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.L}); }
+  catch (e) { el.innerHTML = '<div style="color:#c0392b;font-size:13px;padding:12px;">QR Code 產生失敗，請改用連結</div>'; }
+}
+function copyText(text, btn, label) {
+  const ok = () => { btn.textContent = '✓ 已複製！'; btn.classList.add('done'); setTimeout(() => { btn.textContent = label; btn.classList.remove('done'); }, 2000); };
+  const fb = () => { const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); ok(); } catch (e) {} document.body.removeChild(ta); };
+  if (navigator.clipboard) navigator.clipboard.writeText(text).then(ok).catch(fb); else fb();
+}
+
+const urlParams = new URLSearchParams(location.search);
+const MODE = urlParams.has('m') ? 'static' : urlParams.has('room') ? 'player' : 'host';
+
+// ════════════════════════════════════════════════════════════════════
+//  備用：單人連結（不需要後端，顯示全部關卡）
+// ════════════════════════════════════════════════════════════════════
+if (MODE === 'static') {
+  window.addEventListener('DOMContentLoaded', () => {
+    const ui = document.getElementById('phone-ui'); ui.style.display = 'block';
+    let members = [];
+    try { members = JSON.parse(urlParams.get('members') || '[]'); } catch (e) {}
+    const seed = urlParams.get('seed') || '', myId = parseInt(urlParams.get('m'));
+    const me = members.find(m => m.id === myId);
+    if (!me || !seed) { ui.innerHTML = '<div style="padding:40px;text-align:center;color:#c0392b;">找不到任務資料。</div>'; return; }
+    const R = buildAll(members, seed);
+    ui.innerHTML = `<div class="phone-wrap">
+      <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">${esc(me.name)}</div><div class="phone-sub">夜市任務卡（備用版）</div></div>
+      <span class="phone-seal">🤫 請勿給別人看・主持人說到哪關再看哪關</span>
+      ${STAGES.map(st => stageShell(st, st.body(members, R, myId))).join('')}
+      <div class="phone-footer">梅竹團契・後站夜市</div></div>`;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  玩家：輸入名字 → 等待 → 主持人推進到哪一關就顯示到哪一關
+// ════════════════════════════════════════════════════════════════════
+if (MODE === 'player') {
+  document.title = '我的夜市任務卡';
+  window.addEventListener('DOMContentLoaded', async () => {
+    const ui = document.getElementById('phone-ui'); ui.style.display = 'block';
+    const room = cleanRoom(urlParams.get('room'));
+    if (!room) { ui.innerHTML = '<div style="padding:40px;text-align:center;color:#c0392b;">連結有誤，請重新掃描。</div>'; return; }
+    ui.innerHTML = '<div class="wait"><div class="wait-icon">🏮</div><div class="wait-sub">連線中…</div></div>';
+    let be;
+    try { be = await makeBackend(); } catch (e) { ui.innerHTML = '<div style="padding:40px;text-align:center;color:#c0392b;">連不上伺服器，請確認網路後重新整理，或請主持人給你備用連結。</div>'; return; }
+
+    const PID_KEY = `nm_pid_${room}${urlParams.get('dev') || ''}`; // dev 參數只用於同一台電腦模擬多支手機
+    let pid = lsGet(PID_KEY, null);
+    let players = {}, config = null, stage = 0, lastStage = -1;
+
+    be.listen(`rooms/${room}/players`, v => { players = v || {}; if (pid && !players[pid]) { pid = null; lsSet(PID_KEY, null); } render(); });
+    be.listen(`rooms/${room}/config`, v => { config = v; render(); });
+    be.listen(`rooms/${room}/stage`, v => { stage = v || 0; render(); });
+
+    window.joinRoom = async function () {
+      const inp = document.getElementById('join-name');
+      const name = (inp.value || '').trim().slice(0, 10);
+      if (!name) { inp.focus(); return; }
+      const dup = Object.values(players).some(p => p.name === name);
+      if (dup && !confirm(`已經有人叫「${name}」了，確定是你嗎？（如果是同名的人，請加個字區分）`)) return;
+      pid = rid();
+      lsSet(PID_KEY, pid);
+      await be.set(`rooms/${room}/players/${pid}`, {name, t: Date.now()});
+    };
+    window.leaveRoom = async function () {
+      if (!confirm('要重新輸入名字嗎？')) return;
+      const old = pid; pid = null; lsSet(PID_KEY, null);
+      if (old) await be.remove(`rooms/${room}/players/${old}`);
+      render();
+    };
+
+    function render() {
+      if (!pid) {
+        ui.innerHTML = `<div class="phone-wrap">
+          <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">夜市任務</div><div class="phone-sub">梅竹團契・後站夜市</div></div>
+          <div class="card">
+            <div class="card-title" style="justify-content:center">輸入你的名字加入</div>
+            <input type="text" id="join-name" class="big-input" placeholder="你的名字" maxlength="10" autocomplete="off">
+            <button class="btn btn-primary btn-full" style="margin-top:10px" onclick="joinRoom()">加入 🙌</button>
+          </div>
+          <div class="joined-list">${Object.values(players).sort((a, b) => a.t - b.t).map(p => `<span class="mate">${esc(p.name)}</span>`).join('')}</div>
+        </div>`;
+        const inp = document.getElementById('join-name');
+        inp.addEventListener('keypress', e => { if (e.key === 'Enter') joinRoom(); });
+        return;
+      }
+      const me = players[pid];
+      const members = config && config.members ? config.members : null;
+      const mine = members ? members.find(m => m.pid === pid) : null;
+
+      if (!members || stage < 1 || !mine) {
+        const late = members && stage >= 1 && !mine;
+        ui.innerHTML = `<div class="phone-wrap">
+          <div class="wait">
+            <div class="wait-icon">${late ? '🙋' : '🏮'}</div>
+            <div class="wait-title">${me ? esc(me.name) : ''}，${late ? '你還沒被分到任務' : '你已經加入了！'}</div>
+            <div class="wait-sub">${late ? '請跟主持人說一聲，他重新分配後這裡會自動更新' : '等主持人開始，這裡會自動跳出你的任務'}</div>
+            <div class="joined-list">${Object.values(players).sort((a, b) => a.t - b.t).map(p => `<span class="mate ${p === me ? 'me' : ''}">${esc(p.name)}</span>`).join('')}</div>
+            <button class="link-btn" onclick="leaveRoom()">名字打錯了？重新輸入</button>
+          </div></div>`;
+        lastStage = -1;
+        return;
+      }
+
+      const R = buildAll(members, config.seed);
+      const shown = Math.min(stage, STAGES.length);
+      let html = `<div class="phone-wrap">
+        <div class="phone-header"><div class="phone-icon">🏮</div><div class="phone-name">${esc(mine.name)}</div><div class="phone-sub">夜市任務卡</div></div>
+        <span class="phone-seal">🤫 請勿給別人看</span>`;
+      for (let i = 0; i < shown - 1; i++) {
+        html += `<details class="past"><summary>✓ ${STAGES[i].no}・${STAGES[i].title}（點開回顧）</summary>${stageShell(STAGES[i], STAGES[i].body(members, R, mine.id))}</details>`;
+      }
+      html += `<div class="now-banner">▼ 現在進行中</div>`;
+      html += stageShell(STAGES[shown - 1], STAGES[shown - 1].body(members, R, mine.id));
+      if (shown < STAGES.length) html += `<div class="hint" style="text-align:center">下一關會在主持人宣布後自動出現</div>`;
+      html += `<div class="phone-footer">梅竹團契・後站夜市</div></div>`;
+      ui.innerHTML = html;
+      if (stage !== lastStage) {
+        if (lastStage !== -1 && navigator.vibrate) { try { navigator.vibrate(200); } catch (e) {} }
+        lastStage = stage;
+        const b = document.querySelector('.now-banner');
+        if (b) b.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+    }
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  主持人
+// ════════════════════════════════════════════════════════════════════
+if (MODE === 'host') {
+  let be = null, room = '', players = {}, config = null, stage = 0, nGroups = 2, groups = {}, selectedId = null, unsub = [];
+
+  window.addEventListener('DOMContentLoaded', async () => {
+    document.getElementById('admin-ui').style.display = 'block';
+    try { be = await makeBackend(); }
+    catch (e) { document.getElementById('mode-badge').textContent = '⚠️ 連不上 Firebase，請檢查設定'; return; }
+    const badge = document.getElementById('mode-badge');
+    badge.textContent = be.mode === 'firebase' ? '● 已連線（大家的手機會同步）' : '示範模式：只能在這台電腦的瀏覽器測試，請設定 Firebase';
+    badge.className = 'mode-badge ' + (be.mode === 'firebase' ? 'mode-fb' : 'mode-mock');
+    document.getElementById('manual-input').addEventListener('keypress', e => { if (e.key === 'Enter') addManual(); });
+    document.getElementById('room-input').addEventListener('keypress', e => { if (e.key === 'Enter') openRoom(); });
+    const last = lsGet('nm_host_room', '');
+    const d = new Date();
+    document.getElementById('room-input').value = last || `nm${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    if (last) openRoom();
+  });
+
+  window.openRoom = function () {
+    if (!be) return;
+    const r = cleanRoom(document.getElementById('room-input').value);
+    if (!r) return;
+    room = r; lsSet('nm_host_room', room);
+    groups = lsGet(`nm_groups_${room}`, {});
+    nGroups = lsGet(`nm_ngroups_${room}`, 2);
+    document.getElementById('room-card').style.display = 'none';
+    document.getElementById('room-area').style.display = 'block';
+    document.getElementById('room-chip').textContent = room;
+    const link = `${baseURL()}?room=${room}`;
+    document.getElementById('join-link').textContent = link;
+    setTimeout(() => makeQR(document.getElementById('join-qr'), link, 220), 30);
+    be.listen(`rooms/${room}/players`, v => { players = v || {}; renderAll(); });
+    be.listen(`rooms/${room}/config`, v => { config = v; renderAll(); });
+    be.listen(`rooms/${room}/stage`, v => { stage = v || 0; renderAll(); });
+  };
+  window.leaveRoom = function () { lsSet('nm_host_room', ''); location.reload(); };
+  window.copyJoin = function () { copyText(`${baseURL()}?room=${room}`, document.getElementById('copy-join'), '🔗 複製加入連結（貼到 LINE 群組）'); };
+
+  function playerList() {
+    return Object.entries(players).map(([pid, p]) => ({pid, name: p.name, t: p.t, manual: !!p.manual})).sort((a, b) => a.t - b.t);
+  }
+  function ensureGroups() {
+    const valid = GROUP_NAMES.slice(0, nGroups);
+    let changed = false;
+    playerList().forEach(p => {
+      const g = groups[p.pid];
+      if (!g || !valid.includes(g.g1) || !valid.includes(g.g2)) {
+        const counts = valid.map(x => playerList().filter(q => groups[q.pid] && groups[q.pid].g1 === x).length);
+        const pick = valid[counts.indexOf(Math.min(...counts))];
+        groups[p.pid] = {g1: g && valid.includes(g.g1) ? g.g1 : pick, g2: g && valid.includes(g.g2) ? g.g2 : pick};
+        changed = true;
+      }
+    });
+    if (changed) lsSet(`nm_groups_${room}`, groups);
+  }
+  function currentMembers() {
+    ensureGroups();
+    return playerList().map((p, i) => ({id: i + 1, pid: p.pid, name: p.name, g1: groups[p.pid].g1, g2: groups[p.pid].g2}));
+  }
+
+  window.setGroup = function (pid, key, val) { groups[pid] = {...groups[pid], [key]: val}; lsSet(`nm_groups_${room}`, groups); renderAll(); };
+  window.setGroupCount = function (v) { nGroups = parseInt(v); lsSet(`nm_ngroups_${room}`, nGroups); renderAll(); };
+  window.autoGroup = function () {
+    const ms = currentMembers();
+    if (ms.length < 2) return;
+    setSeed(String(Date.now()));
+    autoAssignGroups(ms, nGroups).forEach(m => { groups[m.pid] = {g1: m.g1, g2: m.g2}; });
+    lsSet(`nm_groups_${room}`, groups); renderAll();
+  };
+  window.removePlayer = function (pid) {
+    const p = players[pid];
+    if (!confirm(`要把「${p ? p.name : ''}」移出名單嗎？`)) return;
+    be.remove(`rooms/${room}/players/${pid}`);
+  };
+  window.addManual = function () {
+    const inp = document.getElementById('manual-input');
+    const name = inp.value.trim().slice(0, 10);
+    if (!name) return;
+    be.set(`rooms/${room}/players/${rid()}`, {name, t: Date.now(), manual: true});
+    inp.value = '';
+  };
+
+  function configChanged() {
+    if (!config || !config.members) return false;
+    const now = currentMembers();
+    const sig = ms => JSON.stringify(ms.map(m => [m.pid, m.name, m.g1, m.g2]));
+    return sig(now) !== sig(config.members);
+  }
+
+  window.generate = async function () {
+    const ms = currentMembers();
+    const issues = checkSetup(ms);
+    if (issues.length) { const w = document.getElementById('warn-msg'); w.innerHTML = '⚠️ ' + issues.join('<br>⚠️ '); w.style.display = 'block'; return; }
+    if (config && stage >= 1 && !confirm('重新分配會改變每個人的任務，並回到第一關第一輪。確定嗎？')) return;
+    const seed = `${room}-${Date.now()}`;
+    await be.set(`rooms/${room}/config`, {members: ms, seed});
+    await be.set(`rooms/${room}/stage`, 1);
+  };
+  window.moveStage = function (d) {
+    const next = Math.max(config ? 1 : 0, Math.min(STAGES.length, stage + d));
+    if (next === stage) return;
+    if (d > 0 && !confirm(`要讓所有人進入「${STAGE_LABELS[next]}」嗎？`)) return;
+    be.set(`rooms/${room}/stage`, next);
+  };
+
+  function renderAll() {
+    if (!room) return;
+    const list = playerList();
+    ensureGroups();
+    document.getElementById('group-count').value = String(nGroups);
+    document.getElementById('count-chip').textContent = `${list.length} 人`;
+    const inConfig = new Set(config && config.members ? config.members.map(m => m.pid) : []);
+    const opts = cur => GROUP_NAMES.slice(0, nGroups).map(g => `<option value="${g}" ${g === cur ? 'selected' : ''}>${g} 組</option>`).join('');
+    document.getElementById('member-list').innerHTML = list.length
+      ? `<div class="member-head"><span>名字</span><span>第一輪</span><span>第二輪</span><span></span></div>` + list.map(p => `
+        <div class="member-item">
+          <div class="member-name">${esc(p.name)}${p.manual ? '<span class="badge-manual">代加</span>' : ''}${config && !inConfig.has(p.pid) ? '<span class="badge-new">新加入</span>' : ''}</div>
+          <select onchange="setGroup('${p.pid}','g1',this.value)">${opts(groups[p.pid].g1)}</select>
+          <select onchange="setGroup('${p.pid}','g2',this.value)">${opts(groups[p.pid].g2)}</select>
+          <button class="btn-icon" onclick="removePlayer('${p.pid}')">×</button>
+        </div>`).join('')
+      : `<div class="empty-hint"><div class="icon">📱</div>等大家掃 QR Code 加入…</div>`;
+
+    const warn = document.getElementById('warn-msg');
+    const issues = list.length ? checkSetup(currentMembers()) : [];
+    const changed = configChanged();
+    if (issues.length) { warn.innerHTML = '⚠️ ' + issues.join('<br>⚠️ '); warn.style.display = 'block'; }
+    else if (changed) { warn.innerHTML = '⚠️ 名單或分組跟目前的任務不一樣（有人新加入、離開或改了組別）。要套用的話請按下方「重新分配」。'; warn.style.display = 'block'; }
+    else warn.style.display = 'none';
+    document.getElementById('gen-btn').textContent = config ? '🔄 重新分配任務（回到第一關第一輪）' : '✨ 分配任務並開始第一關';
+    document.getElementById('gen-btn').className = config ? 'btn btn-secondary btn-full' : 'btn btn-primary btn-full';
+
+    const started = config && config.members && stage >= 1;
+    document.getElementById('control-card').style.display = started ? 'block' : 'none';
+    document.getElementById('cards-card').style.display = started ? 'block' : 'none';
+    if (!started) return;
+    document.getElementById('steps').innerHTML = STAGE_LABELS.slice(1).map((l, i) =>
+      `<div class="step-pill ${i + 1 < stage ? 'done' : i + 1 === stage ? 'now' : ''}">${l.replace('・', '<br>')}</div>`).join('');
+    const nb = document.getElementById('next-btn');
+    nb.textContent = NEXT_LABELS[stage]; nb.disabled = stage >= STAGES.length; nb.style.opacity = nb.disabled ? .5 : 1;
+
+    const R = buildAll(config.members, config.seed);
+    document.getElementById('ov-area').innerHTML = overviewHTML(config.members, R);
+    document.getElementById('name-tabs').innerHTML = config.members.map(m =>
+      `<div class="name-tab ${selectedId === m.id ? 'active' : ''}" onclick="showCard(${m.id})">${esc(m.name)}</div>`).join('');
+    if (selectedId) renderCard(selectedId, R);
+  }
+
+  function overviewHTML(members, R) {
+    const n = id => nameOf(members, id);
+    const gchip = g => `<span class="chip g-${g}">${g}</span>`;
+    const rows = members.map(m => {
+      const rec = members.find(x => x.id === R.recommend[m.id]);
+      return `<tr><td><b>${esc(m.name)}</b></td><td>${gchip(m.g1)} → ${n(R.rounds[0][m.id].target)}</td><td>${gchip(m.g2)} → ${n(R.rounds[1][m.id].target)}</td><td>${n(R.recommend[m.id])}${rec && rec.g2 === m.g2 ? ' ⚠️' : ''}</td></tr>`;
+    }).join('');
+    return `<table class="ov"><tr><th>成員</th><th>第一輪 秘密目標</th><th>第二輪 秘密目標</th><th>推薦對象</th></tr>${rows}</table>
+      <div class="hint">⚠️ 表示推薦對象跟他第二輪同組（分組條件下無法完全避開），任務卡上會提醒他小心。</div>`;
+  }
+  window.toggleOverview = function () {
+    const a = document.getElementById('ov-area'), b = document.getElementById('ov-btn');
+    const open = a.classList.toggle('open'); b.classList.toggle('open', open);
+    b.textContent = open ? '🙈 收起主持人總覽' : '👁️ 展開主持人總覽（不要給別人看）';
+  };
+  window.showCard = function (id) { selectedId = selectedId === id ? null : id; renderAll(); if (!selectedId) document.getElementById('card-display').innerHTML = ''; };
+  function renderCard(id, R) {
+    const m = config.members.find(x => x.id === id);
+    if (!m) return;
+    const slim = config.members.map(x => ({id: x.id, name: x.name, g1: x.g1, g2: x.g2}));
+    const url = `${baseURL()}?m=${id}&seed=${encodeURIComponent(config.seed)}&members=${encodeURIComponent(JSON.stringify(slim))}`;
+    document.getElementById('card-display').innerHTML = `
+      <div class="qr-box" id="card-qr"></div>
+      <button class="copy-btn" id="copy-card" onclick="copyCard()">🔗 複製 ${esc(m.name)} 的備用連結</button>
+      <div style="margin-top:12px">${STAGES.map(st => stageShell(st, st.body(config.members, R, id))).join('')}</div>`;
+    window.copyCard = () => copyText(url, document.getElementById('copy-card'), `🔗 複製 ${m.name} 的備用連結`);
+    setTimeout(() => { const el = document.getElementById('card-qr'); if (el) makeQR(el, url, 200); }, 30);
+  }
+}
+</script>
+</body>
+</html>

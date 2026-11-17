@@ -508,7 +508,7 @@ function revealHTML(config, answers, recMeta, recPhoto, nameOf, recRate) {
 
 const urlParams = new URLSearchParams(location.search);
 // ── 自動更新：GitHub Pages 會讓手機快取舊網頁 10 分鐘，發現有新版就自動重新載入 ──
-const BUILD = '36ff5223a153';
+const BUILD = '77ef36cba05d';
 async function checkUpdate() {
   if (location.protocol === 'file:') return;
   try {
@@ -608,16 +608,17 @@ if (MODE === 'player') {
       const target = pick(pool.filter(m => count[m.pid] === min)).pid;
       // 大家出的題：不會拿來問出題的人自己
       const mine = Object.entries(custom).filter(([, x]) => x && x.q && x.by !== target)
-        .map(([id, x]) => ({q: x.q, ban: x.ban || '', kind: '大家出的', cid: id, ct: x.t || 0}));
+        .map(([id, x]) => ({q: x.q, ban: x.ban || '', kind: '大家出的', cid: id, ct: x.t || 0, seen: !!x.seen}));
       const all = [...bank().food.map(x => ({...x, kind: '口味'})), ...bank().life.map(x => ({...x, kind: x.k || '生活'})), ...mine];
       const used = new Set(), usedAny = new Set();
       Object.values(answers).forEach(a => { usedAny.add(a.q); if (a.to === target) used.add(a.q); });
       Object.entries(draws).forEach(([p, d]) => { if (!d) return; usedAny.add(d.q); if (d.target === target) used.add(d.q); });
       let avail = all.filter(x => !used.has(x.q));
       if (!avail.length) avail = all;
-      // 新出的題還沒有人抽過 → 優先，先出的先抽
-      const fresh = avail.filter(x => x.cid && !usedAny.has(x.q)).sort((a, b) => a.ct - b.ct);
+      // 新出的題還沒有人抽過 → 優先，先出的先抽。被抽到一次就記下來（就算對方跳過也不再優先）
+      const fresh = avail.filter(x => x.cid && !x.seen && !usedAny.has(x.q)).sort((a, b) => a.ct - b.ct);
       const q = fresh.length ? fresh[0] : pick(avail);
+      if (fresh.length) { custom[q.cid] = {...custom[q.cid], seen: true}; be.set(`${R}/custom/${q.cid}/seen`, true).catch(() => {}); }
       return {target, q: q.q, ban: q.ban || '', kind: q.kind, cid: q.cid || '', g: (config && config.t) || 0, t: Date.now()};
     }
     let drawing = false;
@@ -1123,7 +1124,7 @@ if (MODE === 'host') {
     document.getElementById('custom-list').innerHTML = cl.length
       ? `<div class="sub-title">✍️ 大家出的題（${cl.length}）</div>` + cl.map(([id, x]) => {
           const n = Object.values(answers).filter(a => a.q === x.q).length;
-          return `<div class="member-item" style="grid-template-columns:1fr 28px"><div class="member-name" style="font-weight:400">${esc(x.q)}${x.ban ? `<span style="color:#8a7f76;font-size:12px">（不能問：${esc(x.ban)}）</span>` : ''}<span style="color:#8a7f76;font-size:12px">・${esc(nameOf(x.by))} 出・套到 ${n} 次</span></div><button class="btn-icon" onclick="removeCustom('${id}')">×</button></div>`;
+          return `<div class="member-item" style="grid-template-columns:1fr 28px"><div class="member-name" style="font-weight:400">${esc(x.q)}${x.ban ? `<span style="color:#8a7f76;font-size:12px">（不能問：${esc(x.ban)}）</span>` : ''}<span style="color:#8a7f76;font-size:12px">・${esc(nameOf(x.by))} 出・${x.seen ? `套到 ${n} 次` : '還沒人抽到'}</span></div><button class="btn-icon" onclick="removeCustom('${id}')">×</button></div>`;
         }).join('')
       : '<div class="hint">玩家可以在手機上自己出題，會顯示在這裡，不合適的可以刪掉。</div>';
     document.getElementById('ov-area').innerHTML = `<table class="ov"><tr><th>推薦官</th><th>推薦對象</th></tr>
